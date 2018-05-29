@@ -1,0 +1,6 @@
+dist*
+docs
+cabal.project.local
+.cabal-sandbox
+cabal.sandbox.config
+.ghc.environment*
