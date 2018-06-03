@@ -1,7 +1,7 @@
 module Main where
 
 import           BasicPrelude            hiding (head)
--- import           BitMEX
+import           BitMEX                  ()
 import           BitMEXWebSockets
     ( Command (..)
     , RespOrderBook10 (..)
@@ -22,7 +22,7 @@ import           Data.Aeson
 import qualified Data.ByteString         as B (readFile)
 import           Data.ByteString.Char8   (pack)
 import           Data.Time.Clock.POSIX   (getPOSIXTime)
-import           Data.Vector             (head)
+import           Data.Vector             (head, (!))
 import           Network.HTTP.Client     (newManager)
 import           Network.HTTP.Client.TLS
     ( tlsManagerSettings
@@ -35,80 +35,100 @@ import           Network.WebSockets
 import qualified System.Environment      as Env (getArgs)
 
 tickSize = 0.5
+
 strategyThreshold = 0.5
+
 minPos = -2
+
 maxPos = 2
 
--- check :: BitMEXApp ()
--- check = undefined
+check :: Double -> Double -> BitMEXApp ()
+check lastAsk lastBid conn = do
+    msg <- liftIO $ receiveData conn
+    case decode msg :: Maybe Response of
+        Nothing -> print "Invalid response"
+        Just r ->
+            case r of
+                Error x -> print x
+                OB10 (TABLE {..}) -> do
+                    let RespOrderBook10 {..} = head _data
+                        bestAskPrice = head $ head asks
+                        bestAskSize = head asks ! 1
+                        bestBidPrice = head $ head bids
+                        bestBidSize = head bids ! 1
+                    print bestAskPrice
+                    print bestBidPrice
+                    print bestAskSize
+                    print bestBidSize
+                    -- unless ()
+                    case lastAsk /= bestAskPrice of
+                        True ->
+                            placeOrders
+                                bestAskPrice
+                                bestBidPrice
+                                conn
+                        False ->
+                            case lastBid /= bestBidPrice of
+                                True ->
+                                    placeOrders
+                                        bestAskPrice
+                                        bestBidPrice
+                                        conn
+                                False ->
+                                    check
+                                        bestAskPrice
+                                        bestBidPrice
+                                        conn
+                resp -> do
+                    print resp
+                    check lastAsk lastBid conn
 
--- placeOrders :: BitMEXApp ()
--- placeOrders = undefined
+placeOrders :: Double -> Double -> BitMEXApp ()
+placeOrders a b conn = do
+    liftIO $ print "makinOrder"
+    check a b conn
 
 -- aggressiveMM :: BitMEXApp ()
 -- aggressiveMM = placeOrders
-
 -- passiveMM :: BitMEXApp ()
 -- passiveMM = placeOrders
-
 -- runStrategy :: BitMEXApp ()
 -- runStrategy = if imbalance > strategyThreshold
 --     then aggressiveMM
 --     else passiveMM
-
 -- reset :: IO ()
 -- reset = undefined
-
 tradeLoop :: BitMEXApp ()
 tradeLoop conn = do
     pub <- R.asks publicKey
     time <- liftIO $ makeTimestamp <$> getPOSIXTime
     sig <- sign (pack ("GET" ++ "/realtime" ++ show time))
     -- x <- makeRequest $ orderGetOrders (Accept MimeJSON)
-    liftIO $ do
-        -- print x
-        _ <-
-            forkIO $
-            sendMessage
-                conn
-                AuthKey
-                [ String pub
-                , toJSON time
-                , (toJSON . show) sig
-                ]
-        _ <-
-            forkIO check
-
-        _ <-
-            forkIO $
-            sendMessage
-                conn
-                Subscribe
-                [OrderBook10 XBTUSD :: Topic Symbol]
-        loop
-        sendClose conn ("Connection closed" :: Text)
+    _ <-
+        liftIO . forkIO $
+        sendMessage
+            conn
+            AuthKey
+            [String pub, toJSON time, (toJSON . show) sig]
+    -- _ <- forkIO $ check 0.0 0.0
+    _ <-
+        liftIO . forkIO $
+        sendMessage
+            conn
+            Subscribe
+            ([ OrderBook10 XBTUSD
+             , Execution
+             , Order
+             , Position
+             ] :: [Topic Symbol])
+    check 0.0 0.0 conn
+        -- loop
+        -- sendClose conn ("Connection closed" :: Text)
   where
-    check = do
-        msg <- receiveData conn
-        case decode msg :: Maybe Response of
-            Nothing -> print "Invalid response"
-            Just r -> case r of
-                Error x -> print x
-                OB10 (TABLE {..}) -> do
-                    let RespOrderBook10 {..} = head _data
-                    print $ head asks
-                    print $ head bids
-                    check
-                resp    -> do
-                    print resp
-                    check
     loop =
-        getLine >>= \line ->
+        getLine >>= \line
             -- unless (null (return line :: IO Text)) $
-            sendTextData conn line >> loop
-
-
-
+         -> sendTextData conn line >> loop
     -- whileM_ True $ do
     -- check
     -- runStrategy
