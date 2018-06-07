@@ -70,6 +70,7 @@ executable hMMMBot
                      , mtl >= 2.2
                      , time
                      , vector >= 0.12
+                     , stm
 
   -- Directories containing source files.
   hs-source-dirs:      src
