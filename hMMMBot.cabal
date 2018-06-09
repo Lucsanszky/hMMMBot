@@ -59,8 +59,7 @@ executable hMMMBot
   -- Other library packages from which modules are imported.
   build-depends:       base >=4.10 && <4.11
                      , haskell-bitmex-rest
-                     , haskell-bitmex-wrapper
-                     , haskell-bitmex-ws
+                     , haskell-bitmex-client
                      , basic-prelude
                      , bytestring >= 0.10
                      , websockets >= 0.12

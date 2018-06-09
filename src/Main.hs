@@ -1,23 +1,18 @@
 module Main where
 
 import           BasicPrelude                  hiding (head)
-import           BitMEX                        ()
-import           BitMEXWebSockets
-    ( Command (..)
-    , INFO (..)
-    , RespOrderBook10 (..)
-    , RespPosition (..)
-    , Response (..)
-    , STATUS (..)
-    , Symbol (..)
-    , TABLE (..)
-    , Topic (..)
-    , sendMessage
+import           BitMEX
+    ( initLogContext
+    , runDefaultLogExecWithContext
     )
-import           BitMEXWrapper
+
+import           BitMEXClient
 import           Control.Concurrent            (forkIO)
 import           Control.Concurrent.STM.TQueue
-import qualified Control.Monad.Reader          as R (asks)
+import qualified Control.Monad.Reader          as R
+    ( ask
+    , asks
+    )
 import           Control.Monad.STM
 import           Data.Aeson
     ( Value (String)
@@ -53,59 +48,6 @@ strategyThreshold = 0.5
 minPos = -2
 
 maxPos = 2
-
--- sanityCheck :: Double -> Double -> BitMEXApp ()
--- sanityCheck lastAsk lastBid conn = do
---     msg <- liftIO $ receiveData conn
---     case decode msg :: Maybe Response of
---         Nothing -> print "Invalid response"
---         Just r ->
---             case r of
---                 Error x -> print x
---                 OB10 (TABLE {..}) -> do
---                     let RespOrderBook10 {..} = head _data
---                         bestAskPrice = head $ head asks
---                         bestAskSize = head asks ! 1
---                         bestBidPrice = head $ head bids
---                         bestBidSize = head bids ! 1
---                     print bestAskPrice
---                     print bestBidPrice
---                     print bestAskSize
---                     print bestBidSize
---                     -- unless ()
---                     case lastAsk /= bestAskPrice of
---                         True ->
---                             case lastBid /= bestBidPrice of
---                                 True ->
---                                     placeOrders
---                                         bestAskPrice
---                                         bestBidPrice
---                                         conn
---                                 False ->
---                                     placeOrders
---                                         bestAskPrice
---                                         lastBid
---                                         conn
---                         False ->
---                             case lastBid /= bestBidPrice of
---                                 True ->
---                                     placeOrders
---                                         lastAsk
---                                         bestBidPrice
---                                         conn
---                                 False ->
---                                     sanityCheck
---                                         bestAskPrice
---                                         bestBidPrice
---                                         conn
---                 resp -> do
---                     print resp
---                     sanityCheck lastAsk lastBid conn
-
--- placeOrders :: Double -> Double -> BitMEXApp ()
--- placeOrders a b conn = do
---     liftIO $ print "makinOrder"
---     sanityCheck a b conn
 
 positionThread :: TQueue a -> STM ()
 positionThread = undefined
@@ -183,6 +125,7 @@ retrieveLogs q = do
 
 tradeLoop :: BitMEXApp ()
 tradeLoop conn = do
+    config <- R.ask
     pub <- R.asks publicKey
     time <- liftIO $ makeTimestamp <$> getPOSIXTime
     sig <- sign (pack ("GET" ++ "/realtime" ++ show time))
@@ -204,31 +147,14 @@ tradeLoop conn = do
              , Order
              , Position
              ] :: [Topic Symbol])
-        forkIO $
-            forever $ do
-                msg <- receiveData conn
-                atomically $
-                    processResponse
-                        (decode msg)
-                        positionQueue
-                        orderQueue
-                        messageQueue
-                -- atomically $
-                --     writeOrders (decode msg) orderQueue
-        forkIO $
-            forever $ do
-                atomically $
-                    logResponse positionQueue logQueue
-        forkIO $
-            forever $ do
-                atomically $ logResponse orderQueue logQueue
-        forkIO $
-            forever $ do
-                atomically $
-                    logResponse messageQueue logQueue
         forever $ do
-            resp <- atomically $ retrieveLogs logQueue
-            print resp
+            msg <- getMessage conn config
+            atomically $
+                processResponse
+                    msg
+                    positionQueue
+                    orderQueue
+                    messageQueue
 
 main :: IO ()
 main = do
@@ -236,7 +162,8 @@ main = do
     (pubPath:privPath:_) <- Env.getArgs
     pub <- readFile pubPath
     priv <- B.readFile privPath
-    let config =
+    logCxt <- initLogContext
+    let config0 =
             BitMEXWrapperConfig
             { environment = TestNet
             , pathREST = Just "/api/v1"
@@ -244,5 +171,8 @@ main = do
             , manager = Just mgr
             , publicKey = pub
             , privateKey = priv
+            , logExecContext = runDefaultLogExecWithContext
+            , logContext = logCxt
             }
+    config <- return config0 >>= withStdoutLoggingWS
     connect config tradeLoop
