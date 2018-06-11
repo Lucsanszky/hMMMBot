@@ -10,8 +10,12 @@ import           BitMEXClient
 import           Control.Concurrent            (forkIO)
 import           Control.Concurrent.STM.TQueue
 import qualified Control.Monad.Reader          as R
-    ( ask
+    ( MonadReader
+    , ReaderT
+    , ask
     , asks
+    , lift
+    , runReaderT
     )
 import           Control.Monad.STM
 import           Data.Aeson
@@ -49,96 +53,88 @@ minPos = -2
 
 maxPos = 2
 
-positionThread :: TQueue a -> STM ()
-positionThread = undefined
+data BotState = BotState
+    { connection    :: !Connection
+    , positionQueue :: !(TQueue (Maybe Response))
+    , obQueue       :: !(TQueue (Maybe Response))
+    , orderQueue    :: !(TQueue (Maybe Response))
+    , marginQueue   :: !(TQueue (Maybe Response))
+    , messageQueue  :: !(TQueue (Maybe Response))
+    }
 
-orderThread :: TQueue (Maybe Response) -> STM Double
-orderThread q = do
-    o <- readTQueue q
-    case o of
-        Nothing -> retry
-        Just (OB10 (TABLE {..})) -> do
-            let RespOrderBook10 {..} = head _data
-                bestAskPrice = head $ head asks
-            return bestAskPrice
+newtype BitMEXBot m a = BitMEXBot
+    { runBot :: (R.ReaderT BotState (BitMEXReader m) a)
+    } deriving ( Applicative
+               , Functor
+               , Monad
+               , MonadIO
+               , R.MonadReader BotState
+               )
 
-writeOrders ::
-       Maybe Response -> TQueue (Maybe Response) -> STM ()
-writeOrders msg q = do
-    case msg :: Maybe Response of
-        Nothing -> return ()
-        Just r ->
-            case r of
-                (OB10 t) -> writeTQueue q (Just (OB10 t))
-                _        -> return ()
-
-processResponse ::
-       Maybe Response
-    -> TQueue (Maybe Response)
-    -> TQueue (Maybe Response)
-    -> TQueue (Maybe Response)
-    -> STM ()
-processResponse msg positionQueue orderQueue messageQueue =
+processResponse :: BotState -> Maybe Response -> STM ()
+processResponse (BotState {..}) msg = do
     case msg of
         Nothing -> return ()
         Just r ->
             case r of
                 OB10 t ->
-                    writeTQueue orderQueue (Just (OB10 t))
+                    writeTQueue obQueue (Just (OB10 t))
                 P t ->
                     writeTQueue positionQueue (Just (P t))
+                O t -> writeTQueue orderQueue (Just (O t))
+                M t -> writeTQueue marginQueue (Just (M t))
                 x -> writeTQueue messageQueue (Just x)
 
-logResponse ::
-       TQueue (Maybe Response) -> TQueue String -> STM ()
-logResponse q logQueue = do
-    x <- readTQueue q
-    case x of
-        Nothing -> return ()
-        Just r ->
-            case r of
-                OB10 (TABLE {..}) -> do
-                    let RespOrderBook10 {..} = head _data
-                        bestAskPrice = head $ head asks
-                        bestAskSize = head asks ! 1
-                        bestBidPrice = head $ head bids
-                        bestBidSize = head bids ! 1
-                    writeTQueue logQueue $ show bestAskPrice
-                P (TABLE {..}) -> do
-                    let RespPosition {..} = head _data
-                        msg =
-                            "pos info: " ++
-                            show account ++
-                            " " ++
-                            show symbol ++
-                            " " ++ show currency
-                    writeTQueue logQueue msg
-                Status (STATUS {..}) ->
-                    writeTQueue logQueue $ show subscribe
-                Info (INFO {..}) ->
-                    writeTQueue logQueue $ show info
-                x -> writeTQueue logQueue $ show x
+sanityCheck :: STM ()
+sanityCheck = return ()
 
-retrieveLogs :: TQueue String -> STM String
-retrieveLogs q = do
-    readTQueue q >>= return
+tradeLoop :: BitMEXBot IO ()
+tradeLoop = tradeLoop
 
-tradeLoop :: BitMEXApp ()
-tradeLoop conn = do
+readResponse :: TQueue (Maybe Response) -> STM Response
+readResponse q = do
+    r <- readTQueue q
+    case r of
+        Nothing -> retry
+        Just x  -> return x
+
+botLoop :: BitMEXBot IO ()
+botLoop = do
+    wrapperConfig <- BitMEXBot $ R.lift $ R.ask
+    botState@(BotState {..}) <- R.ask
+    liftIO $ do
+        forkIO $
+            forever $ do
+                msg <- getMessage connection wrapperConfig
+                atomically $ processResponse botState msg
+    M (TABLE {_data = marginData}) <-
+        liftIO $ atomically $ readResponse marginQueue
+    OB10 (TABLE {_data = orderbookData}) <-
+        liftIO $ atomically $ readResponse obQueue
+    let RespMargin {amount = marginAmount} = head marginData
+        RespOrderBook10 {asks = obAsks, bids = obBids} =
+            head orderbookData
+    case marginAmount of
+        Nothing ->
+            fail "Can't start trading: insufficient funds"
+        Just a -> forever $ tradeLoop
+
+initBot :: BitMEXApp IO ()
+initBot conn = do
     config <- R.ask
     pub <- R.asks publicKey
     time <- liftIO $ makeTimestamp <$> getPOSIXTime
     sig <- sign (pack ("GET" ++ "/realtime" ++ show time))
+    positionQueue <- liftIO $ atomically newTQueue
+    obQueue <- liftIO $ atomically newTQueue
+    orderQueue <- liftIO $ atomically newTQueue
+    marginQueue <- liftIO $ atomically newTQueue
+    messageQueue <- liftIO $ atomically newTQueue
     liftIO $ do
-        positionQueue <- atomically newTQueue
-        orderQueue <- atomically newTQueue
-        messageQueue <- atomically newTQueue
-        logQueue <- atomically newTQueue
         sendMessage
             conn
             AuthKey
             [String pub, toJSON time, (toJSON . show) sig]
-    -- _ <- forkIO $ sanityCheck 0.0 0.0
         sendMessage
             conn
             Subscribe
@@ -146,15 +142,18 @@ tradeLoop conn = do
              , Execution
              , Order
              , Position
+             , Margin
              ] :: [Topic Symbol])
-        forever $ do
-            msg <- getMessage conn config
-            atomically $
-                processResponse
-                    msg
-                    positionQueue
-                    orderQueue
-                    messageQueue
+    let state =
+            BotState
+            { connection = conn
+            , positionQueue = positionQueue
+            , obQueue = obQueue
+            , orderQueue = orderQueue
+            , marginQueue = marginQueue
+            , messageQueue = messageQueue
+            }
+    R.runReaderT (runBot botLoop) state
 
 main :: IO ()
 main = do
@@ -175,4 +174,4 @@ main = do
             , logContext = logCxt
             }
     config <- return config0 >>= withStdoutLoggingWS
-    connect config tradeLoop
+    connect config initBot
