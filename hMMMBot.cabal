@@ -71,12 +71,14 @@ executable hMMMBot
                      , haskell-bitmex-client
                      , basic-prelude
                      , bytestring >= 0.10
+                     , containers >= 0.5
                      , websockets >= 0.12
                      , http-client >=0.5 && <0.6
                      , aeson >= 1.2
                      , http-client-tls >= 0.3
                      , mtl >= 2.2
                      , time
+                     , text
                      , vector >= 0.12
                      , stm
 
