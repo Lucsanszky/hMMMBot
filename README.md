@@ -2,7 +2,7 @@
 
 ## Requirements
 
-Apart from the obvious requirement that the bot should be profitable, below are is an itemised list of desired functionalities:
+Apart from the obvious requirement that the bot should be profitable, below is an itemised list of desired functionalities:
 
 * Should be as high-performant as possible
 * Should have an interface that allows strategy tweaking (ala: https://github.com/BitMEX/sample-market-maker)
