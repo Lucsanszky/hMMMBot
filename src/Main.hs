@@ -27,7 +27,7 @@ import qualified Data.Text                     as T (pack)
 import           Data.Time.Clock.POSIX
     ( getPOSIXTime
     )
-import           Data.Vector                   (head)
+import           Data.Vector                   (head, (!?))
 import           Network.HTTP.Client           (newManager)
 import           Network.HTTP.Client.TLS
     ( tlsManagerSettings
@@ -46,12 +46,13 @@ minPos = -2
 maxPos = 2
 
 data BotState = BotState
-    { connection    :: !Connection
-    , positionQueue :: !(TQueue (Maybe Response))
-    , obQueue       :: !(TQueue (Maybe Response))
-    , orderQueue    :: !(TQueue (Maybe Response))
-    , marginQueue   :: !(TQueue (Maybe Response))
-    , messageQueue  :: !(TQueue (Maybe Response))
+    { connection     :: !Connection
+    , positionQueue  :: !(TQueue (Maybe Response))
+    , lobQueue       :: !(TQueue (Maybe Response))
+    , orderQueue     :: !(TQueue (Maybe Response))
+    , marginQueue    :: !(TQueue (Maybe Response))
+    , executionQueue :: !(TQueue (Maybe Response))
+    , messageQueue   :: !(TQueue (Maybe Response))
     }
 
 -- newtype BitMEXBot m a = BitMEXBot
@@ -69,11 +70,15 @@ processResponse (BotState {..}) msg = do
         Just r ->
             case r of
                 OB10 t ->
-                    writeTQueue obQueue (Just (OB10 t))
+                    writeTQueue lobQueue (Just (OB10 t))
                 P t ->
                     writeTQueue positionQueue (Just (P t))
                 O t -> writeTQueue orderQueue (Just (O t))
                 M t -> writeTQueue marginQueue (Just (M t))
+                Exe t ->
+                    writeTQueue
+                        executionQueue
+                        (Just (Exe t))
                 x -> writeTQueue messageQueue (Just x)
 
 placeBulkOrder ::
@@ -104,6 +109,7 @@ placeOrder order = do
 
 prepareOrder ::
        Text
+    -> Text
     -> OrderType
     -> Side
     -> Double
@@ -111,11 +117,12 @@ prepareOrder ::
     -> Maybe ExecutionInstruction
     -> Maybe ContingencyType
     -> Mex.Order
-prepareOrder id orderType side price stopPx executionType contingencyType =
-    (Mex.mkOrder id)
+prepareOrder linkId clientId orderType side price stopPx executionType contingencyType =
+    (Mex.mkOrder clientId)
     { Mex.orderSymbol = Just ((T.pack . show) XBTUSD)
     , Mex.orderOrdType = Just ((T.pack . show) orderType)
-    , Mex.orderClOrdLinkId = Just id
+    , Mex.orderClOrdLinkId = Just linkId
+    , Mex.orderClOrdId = Just clientId
     , Mex.orderSide = Just ((T.pack . show) side)
     , Mex.orderPrice = Just price
     , Mex.orderStopPx = stopPx
@@ -126,10 +133,86 @@ prepareOrder id orderType side price stopPx executionType contingencyType =
     }
     -- trade botState (askPrice, bidPrice)
 
+makeMarket ::
+       Double
+    -> Double
+    -> BitMEXReader IO (Mex.MimeResult [Mex.Order])
+makeMarket ask bid = do
+    time <- liftIO $ makeTimestamp <$> getPOSIXTime
+    let buyOrder =
+            prepareOrder
+                "buytest"
+                ("buytestlimit" <> (T.pack . show) time)
+                Limit
+                Buy
+                bid
+                Nothing
+                Nothing
+                Nothing
+        sellOrder =
+            prepareOrder
+                "selltest"
+                ("selltestlimit" <> (T.pack . show) time)
+                Limit
+                Sell
+                ask
+                Nothing
+                Nothing
+                Nothing
+        stopLossBuy =
+            prepareOrder
+                "buytest"
+                ("buyteststop" <> (T.pack . show) time)
+                StopLimit
+                Sell
+                (bid - 10.0)
+                (Just (bid - 9.0))
+                (Just LastPrice)
+                (Just OCO)
+        stopLossSell =
+            prepareOrder
+                "selltest"
+                ("sellteststop" <> (T.pack . show) time)
+                StopLimit
+                Buy
+                (ask + 10.0)
+                (Just (ask + 9.0))
+                (Just LastPrice)
+                (Just OCO)
+    placeBulkOrder
+        [buyOrder, sellOrder, stopLossBuy, stopLossSell]
+
+waitTilProcessed :: BotState -> STM Bool
+waitTilProcessed BotState {..} = do
+    O (TABLE {_data = orderData}) <- readResponse orderQueue
+    case orderData !? 0 of
+        Nothing -> retry
+        Just (RespOrder {clOrdID = id}) ->
+            case id of
+                Nothing -> retry
+                Just clientId -> do
+                    Exe (TABLE {_data = executionData}) <-
+                        readResponse executionQueue
+                    case executionData !? 0 of
+                        Nothing -> retry
+                        Just (RespExecution { clOrdID = respId
+                                            , workingIndicator = working
+                                            }) ->
+                            case respId of
+                                Nothing -> retry
+                                Just x ->
+                                    case (fmap
+                                              (&& (x ==
+                                                   clientId))
+                                              working) of
+                                        Just True ->
+                                            return True
+                                        _ -> retry
+
 trade :: BotState -> (Double, Double) -> BitMEXReader IO ()
 trade botState@(BotState {..}) (bestAsk, bestBid) = do
     OB10 (TABLE {_data = orderbookData}) <-
-        liftIO $ atomically $ readResponse obQueue
+        liftIO $ atomically $ readResponse lobQueue
     let RespOrderBook10 {asks = obAsks, bids = obBids} =
             head orderbookData
         newBestAsk = head $ head obAsks
@@ -138,15 +221,21 @@ trade botState@(BotState {..}) (bestAsk, bestBid) = do
         False ->
             case newBestBid /= bestBid of
                 False -> do
-                    print
-                        "==============NOTHING CHANGED==============="
                     trade botState (bestAsk, bestBid)
                 True -> do
-                    print
-                        "==============BID CHANGED=============="
+                    _ <- makeMarket bestAsk newBestBid
+                    -- Wait for order to complete
+                    liftIO $
+                        atomically $
+                        waitTilProcessed botState
                     trade botState (bestAsk, newBestBid)
         True -> do
-            print "==============ASK CHANGED=============="
+            _ <- makeMarket newBestAsk bestBid
+            -- Wait for order to complete
+            liftIO $ atomically $ waitTilProcessed botState
+            -- _ <-
+            --     liftIO $
+            --     atomically $ readResponse orderQueue
             trade botState (newBestAsk, bestBid)
 
 tradeLoop :: BotState -> BitMEXApp IO ()
@@ -154,52 +243,12 @@ tradeLoop botState@(BotState {..}) conn = do
     M (TABLE {_data = marginData}) <-
         liftIO $ atomically $ readResponse marginQueue
     OB10 (TABLE {_data = orderbookData}) <-
-        liftIO $ atomically $ readResponse obQueue
+        liftIO $ atomically $ readResponse lobQueue
     let RespMargin {marginBalance = marginAmount} =
             head marginData
         RespOrderBook10 {asks = obAsks, bids = obBids} =
             head orderbookData
-        buyOrder =
-            prepareOrder
-                "buytest"
-                Limit
-                Buy
-                (head $ head obBids)
-                Nothing
-                Nothing
-                (Just OCO)
-        sellOrder =
-            prepareOrder
-                "selltest"
-                Limit
-                Sell
-                (head $ head obAsks)
-                Nothing
-                Nothing
-                (Just OCO)
-        stopLossBuy =
-            prepareOrder
-                "buytest"
-                StopLimit
-                Sell
-                ((head $ head obBids) - 10.0)
-                (Just ((head $ head obBids) - 9.0))
-                (Just LastPrice)
-                (Just OCO)
-        stopLossSell =
-            prepareOrder
-                "selltest"
-                StopLimit
-                Buy
-                ((head $ head obAsks) + 10.0)
-                (Just ((head $ head obAsks) + 9.0))
-                (Just LastPrice)
-                (Just OCO)
-    _ <-
-        placeBulkOrder
-            [buyOrder, sellOrder, stopLossBuy, stopLossSell]
-    return ()
-    -- trade botState (head $ head obAsks, head $ head obBids)
+    trade botState (head $ head obAsks, head $ head obBids)
 
 readResponse :: TQueue (Maybe Response) -> STM Response
 readResponse q = do
@@ -208,12 +257,11 @@ readResponse q = do
         Nothing -> retry
         Just x  -> return x
 
-botLoop :: BotState -> BitMEXApp IO ()
-botLoop botState@(BotState {..}) conn = do
-    wrapperConfig <- R.ask
-    -- forever $ tradeLoop botState conn
-    tradeLoop botState conn
-
+-- botLoop :: BotState -> BitMEXApp IO ()
+-- botLoop botState@(BotState {..}) conn = do
+--     wrapperConfig <- R.ask
+--     -- forever $ tradeLoop botState conn
+--     tradeLoop botState conn
 initBot :: BitMEXApp IO ()
 initBot conn = do
     config <- R.ask
@@ -221,17 +269,19 @@ initBot conn = do
     time <- liftIO $ makeTimestamp <$> getPOSIXTime
     sig <- sign (pack ("GET" ++ "/realtime" ++ show time))
     positionQueue <- liftIO $ atomically newTQueue
-    obQueue <- liftIO $ atomically newTQueue
+    lobQueue <- liftIO $ atomically newTQueue
     orderQueue <- liftIO $ atomically newTQueue
     marginQueue <- liftIO $ atomically newTQueue
+    executionQueue <- liftIO $ atomically newTQueue
     messageQueue <- liftIO $ atomically newTQueue
     let botState =
             BotState
             { connection = conn
             , positionQueue = positionQueue
-            , obQueue = obQueue
+            , lobQueue = lobQueue
             , orderQueue = orderQueue
             , marginQueue = marginQueue
+            , executionQueue = executionQueue
             , messageQueue = messageQueue
             }
     liftIO $ do
@@ -253,7 +303,7 @@ initBot conn = do
                 msg <- getMessage conn config
                 atomically $ processResponse botState msg
     -- R.runReaderT (runBot botLoop) state
-    botLoop botState conn
+    tradeLoop botState conn
 
 main :: IO ()
 main = do
