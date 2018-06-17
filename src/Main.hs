@@ -2,7 +2,6 @@ module Main where
 
 import           BasicPrelude                  hiding (head)
 import qualified BitMEX                        as Mex
-
 import           BitMEXClient
 import           Control.Concurrent            (forkIO)
 import           Control.Concurrent.STM.TQueue
@@ -105,23 +104,24 @@ placeOrder order = do
 
 prepareOrder ::
        Text
-    -> Text
+    -> OrderType
     -> Side
     -> Double
     -> Maybe Double
-    -> Maybe Text
-    -> Maybe Text
+    -> Maybe ExecutionInstruction
+    -> Maybe ContingencyType
     -> Mex.Order
 prepareOrder id orderType side price stopPx executionType contingencyType =
     (Mex.mkOrder id)
     { Mex.orderSymbol = Just ((T.pack . show) XBTUSD)
-    , Mex.orderOrdType = Just orderType
+    , Mex.orderOrdType = Just ((T.pack . show) orderType)
     , Mex.orderClOrdLinkId = Just id
     , Mex.orderSide = Just ((T.pack . show) side)
     , Mex.orderPrice = Just price
     , Mex.orderStopPx = stopPx
-    , Mex.orderExecInst = executionType
-    , Mex.orderContingencyType = contingencyType
+    , Mex.orderExecInst = fmap (T.pack . show) executionType
+    , Mex.orderContingencyType =
+          fmap (T.pack . show) contingencyType
     , Mex.orderOrderQty = Just 66
     }
     -- trade botState (askPrice, bidPrice)
@@ -162,43 +162,43 @@ tradeLoop botState@(BotState {..}) conn = do
         buyOrder =
             prepareOrder
                 "buytest"
-                "Limit"
+                Limit
                 Buy
                 (head $ head obBids)
                 Nothing
                 Nothing
-                (Just "OneCancelsTheOther")
+                (Just OCO)
         sellOrder =
             prepareOrder
                 "selltest"
-                "Limit"
+                Limit
                 Sell
                 (head $ head obAsks)
                 Nothing
                 Nothing
-                (Just "OneCancelsTheOther")
+                (Just OCO)
         stopLossBuy =
             prepareOrder
                 "buytest"
-                "StopLimit"
+                StopLimit
                 Sell
                 ((head $ head obBids) - 10.0)
                 (Just ((head $ head obBids) - 9.0))
-                (Just "LastPrice")
-                (Just "OneCancelsTheOther")
+                (Just LastPrice)
+                (Just OCO)
         stopLossSell =
             prepareOrder
                 "selltest"
-                "StopLimit"
+                StopLimit
                 Buy
                 ((head $ head obAsks) + 10.0)
                 (Just ((head $ head obAsks) + 9.0))
-                (Just "LastPrice")
-                (Just "OneCancelsTheOther")
-    _ <- placeBulkOrder
-        [buyOrder, sellOrder, stopLossBuy, stopLossSell]
+                (Just LastPrice)
+                (Just OCO)
+    _ <-
+        placeBulkOrder
+            [buyOrder, sellOrder, stopLossBuy, stopLossSell]
     return ()
-
     -- trade botState (head $ head obAsks, head $ head obBids)
 
 readResponse :: TQueue (Maybe Response) -> STM Response
