@@ -40,7 +40,6 @@ trade :: BotState -> (Double, Double) -> BitMEXReader IO ()
 trade botState@(BotState {..}) (bestAsk, bestBid) = do
     OB10 (TABLE {_data = orderbookData}) <-
         liftIO $ atomically $ readResponse lobQueue
-    P (TABLE {_data = positionData}) <- liftIO $ atomically $ readResponse positionQueue
 
     let RespOrderBook10 {asks = obAsks, bids = obBids} =
             head orderbookData
