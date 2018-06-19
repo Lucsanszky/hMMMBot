@@ -51,7 +51,9 @@ executable hMMMBot
   main-is:             Main.hs
 
   -- Modules included in this executable, other than Main.
-  -- other-modules:
+  other-modules: Bot
+                 Bot.Concurrent
+                 Bot.Util
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
@@ -72,8 +74,10 @@ executable hMMMBot
                      , basic-prelude
                      , bytestring >= 0.10
                      , containers >= 0.5
+                     , unordered-containers >= 0.2
                      , websockets >= 0.12
                      , http-client >=0.5 && <0.6
+                     , http-types >= 0.10
                      , aeson >= 1.2
                      , http-client-tls >= 0.3
                      , mtl >= 2.2
