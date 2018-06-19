@@ -61,9 +61,6 @@ trade botState@(BotState {..}) (bestAsk, bestBid) = do
                                  botState
                                  (bestAsk, newBestBid)
                         else fail "order didn't go through"
-                    -- liftIO $
-                    --     atomically $
-                    --     waitTilProcessed botState
         True -> do
             Mex.MimeResult {Mex.mimeResultResponse = resp} <-
                 makeMarket newBestAsk bestBid
@@ -72,10 +69,6 @@ trade botState@(BotState {..}) (bestAsk, bestBid) = do
             if code == 200
                 then trade botState (newBestAsk, bestBid)
                 else fail "order didn't go through"
-            -- liftIO $ atomically $ waitTilProcessed botState
-            -- _ <-
-            --     liftIO $
-            --     atomically $ readResponse orderQueue
 
 tradeLoop :: BotState -> BitMEXApp IO ()
 tradeLoop botState@(BotState {..}) conn = do
@@ -108,14 +101,7 @@ tradeLoop botState@(BotState {..}) conn = do
         slm <- atomically $ readTVar stopLossMap
         return $ manageRisk slm qty price
     trade botState (head $ head obAsks, head $ head obBids)
-    -- where
-    --   riskLoop =
 
--- botLoop :: BotState -> BitMEXApp IO ()
--- botLoop botState@(BotState {..}) conn = do
---     wrapperConfig <- R.ask
---     -- forever $ tradeLoop botState conn
---     tradeLoop botState conn
 initBot :: BitMEXApp IO ()
 initBot conn = do
     config <- R.ask

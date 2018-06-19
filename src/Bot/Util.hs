@@ -38,7 +38,6 @@ manageRisk stopLossMap cumQty (Just avgCostPrice)
                 prepareOrder
                     Nothing
                     (fromJust $ HM.lookup "BUY" stopLossMap)
-                    -- ("buyteststop" <> (T.pack . show) time)
                     Nothing
                     (Just Sell)
                     (avgCostPrice * 0.95)
@@ -165,7 +164,6 @@ prepareOrder linkId clientId orderType side price stopPx orderQty executionType 
           fmap (T.pack . show) contingencyType
     , Mex.orderOrderQty = Just orderQty
     }
-    -- trade botState (askPrice, bidPrice)
 
 makeMarket ::
        Double
@@ -195,26 +193,4 @@ makeMarket ask bid = do
                 66
                 Nothing
                 Nothing
-    -- Don't post stop orders. Instead during setup, create 2 placeholder limit loss
-    -- orders (buy and sell) and amend them based on position change.
-        -- stopLossBuy =
-        --     prepareOrder
-        --         "buytest"
-        --         ("buyteststop" <> (T.pack . show) time)
-        --         StopLimit
-        --         Sell
-        --         (bid - 10.0)
-        --         (Just (bid - 9.0))
-        --         (Just LastPrice)
-        --         (Just OCO)
-        -- stopLossSell =
-        --     prepareOrder
-        --         "selltest"
-        --         ("sellteststop" <> (T.pack . show) time)
-        --         StopLimit
-        --         Buy
-        --         (ask + 10.0)
-        --         (Just (ask + 9.0))
-        --         (Just LastPrice)
-        --         (Just OCO)
     placeBulkOrder [buyOrder, sellOrder]
