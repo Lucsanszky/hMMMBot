@@ -40,10 +40,13 @@ trade :: BotState -> (Double, Double) -> BitMEXReader IO ()
 trade botState@(BotState {..}) (bestAsk, bestBid) = do
     OB10 (TABLE {_data = orderbookData}) <-
         liftIO $ atomically $ readResponse lobQueue
+    P (TABLE {_data = positionData}) <- liftIO $ atomically $ readResponse positionQueue
+
     let RespOrderBook10 {asks = obAsks, bids = obBids} =
             head orderbookData
         newBestAsk = head $ head obAsks
         newBestBid = head $ head obBids
+
     case newBestAsk /= bestAsk of
         False ->
             case newBestBid /= bestBid of
@@ -87,27 +90,7 @@ tradeLoop botState@(BotState {..}) conn = do
         RespOrderBook10 {asks = obAsks, bids = obBids} =
             head orderbookData
     -- Setup placeholder stoploss orders
-        stopLossBuy =
-            prepareOrder
-                "buystoploss"
-                ("buyteststop" <> (T.pack . show) time)
-                StopLimit
-                Sell
-                0.5
-                (Just 1)
-                (Just LastPrice)
-                (Just OCO)
-        stopLossSell =
-            prepareOrder
-                "sellstoploss"
-                ("sellteststop" <> (T.pack . show) time)
-                StopLimit
-                Buy
-                1000000
-                (Just 99999)
-                (Just LastPrice)
-                (Just OCO)
-    placeBulkOrder [stopLossBuy, stopLossSell]
+    initStopLossOrders time
     slm <- liftIO $ atomically $ readTVar stopLossMap
     liftIO $
         atomically $
@@ -121,7 +104,13 @@ tradeLoop botState@(BotState {..}) conn = do
             slm
     check <- liftIO $ atomically $ readTVar stopLossMap
     print check
+    liftIO $ forkIO $ forever $ do
+        (qty, price) <- atomically $ riskManager positionQueue
+        slm <- atomically $ readTVar stopLossMap
+        return $ manageRisk slm qty price
     trade botState (head $ head obAsks, head $ head obBids)
+    -- where
+    --   riskLoop =
 
 -- botLoop :: BotState -> BitMEXApp IO ()
 -- botLoop botState@(BotState {..}) conn = do
