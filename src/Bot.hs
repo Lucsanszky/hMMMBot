@@ -14,6 +14,7 @@ import           Control.Concurrent.STM.TVar
 import qualified Control.Monad.Reader          as R
     ( ask
     , asks
+    , runReaderT
     )
 import           Control.Monad.STM
 import           Data.Aeson
@@ -40,12 +41,10 @@ trade :: BotState -> (Double, Double) -> BitMEXReader IO ()
 trade botState@(BotState {..}) (bestAsk, bestBid) = do
     OB10 (TABLE {_data = orderbookData}) <-
         liftIO $ atomically $ readResponse lobQueue
-
     let RespOrderBook10 {asks = obAsks, bids = obBids} =
             head orderbookData
         newBestAsk = head $ head obAsks
         newBestBid = head $ head obBids
-
     case newBestAsk /= bestAsk of
         False ->
             case newBestBid /= bestBid of
@@ -72,6 +71,7 @@ trade botState@(BotState {..}) (bestAsk, bestBid) = do
 
 tradeLoop :: BotState -> BitMEXApp IO ()
 tradeLoop botState@(BotState {..}) conn = do
+    config <- R.ask
     time <- liftIO $ makeTimestamp <$> getPOSIXTime
     M (TABLE {_data = marginData}) <-
         liftIO $ atomically $ readResponse marginQueue
@@ -94,13 +94,16 @@ tradeLoop botState@(BotState {..}) conn = do
             "BUY"
             ("buyteststop" <> (T.pack . show) time)
             slm
-    check <- liftIO $ atomically $ readTVar stopLossMap
-    print check
-    liftIO $ forkIO $ forever $ do
-        (qty, price) <- atomically $ riskManager positionQueue
-        slm <- atomically $ readTVar stopLossMap
-        return $ manageRisk slm qty price
+    _ <-
+        liftIO $
+        forkIO $ forever $ do riskLoop botState config
     trade botState (head $ head obAsks, head $ head obBids)
+
+riskLoop :: BotState -> BitMEXWrapperConfig -> IO ()
+riskLoop botState@BotState {..} config = do
+    (qty, price) <- atomically $ riskManager positionQueue
+    slm <- atomically $ readTVar stopLossMap
+    R.runReaderT (run (manageRisk slm qty price)) config
 
 initBot :: BitMEXApp IO ()
 initBot conn = do

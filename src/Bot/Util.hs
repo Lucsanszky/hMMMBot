@@ -27,10 +27,8 @@ manageRisk ::
        HashMap Text Text
     -> Double
     -> Maybe Double
-    -> BitMEXReader IO (Mex.MimeResult [Mex.Order])
-manageRisk _ _ Nothing =
-    (liftIO $ makeTimestamp <$> getPOSIXTime) >>=
-    initStopLossOrders
+    -> BitMEXReader IO ()
+manageRisk stopLossMap _ Nothing = return ()
 manageRisk stopLossMap cumQty (Just avgCostPrice)
     | cumQty < 0 = do
         time <- liftIO $ makeTimestamp <$> getPOSIXTime
@@ -45,7 +43,8 @@ manageRisk stopLossMap cumQty (Just avgCostPrice)
                     cumQty
                     Nothing
                     Nothing
-        bulkAmendOrders [stopLossBuy]
+        res <- bulkAmendOrders [stopLossBuy]
+        return ()
     | otherwise = do
         time <- liftIO $ makeTimestamp <$> getPOSIXTime
         let stopLossSell =
@@ -59,7 +58,8 @@ manageRisk stopLossMap cumQty (Just avgCostPrice)
                     cumQty
                     Nothing
                     Nothing
-        bulkAmendOrders [stopLossSell]
+        res <- bulkAmendOrders [stopLossSell]
+        return ()
 
 initStopLossOrders ::
        Int -> BitMEXReader IO (Mex.MimeResult [Mex.Order])

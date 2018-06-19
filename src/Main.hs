@@ -12,13 +12,9 @@ import           Network.HTTP.Client.TLS
 import qualified System.Environment      as Env (getArgs)
 
 -- tickSize = 0.5
-
 -- strategyThreshold = 0.5
-
 -- minPos = -2
-
 -- maxPos = 2
-
 main :: IO ()
 main = do
     mgr <- newManager tlsManagerSettings
