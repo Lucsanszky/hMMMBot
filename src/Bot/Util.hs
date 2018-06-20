@@ -8,6 +8,7 @@ module Bot.Util
     , amendOrder
     , initStopLossOrders
     , manageRisk
+    , bulkAmendOrders
     ) where
 
 import           BasicPrelude
@@ -35,7 +36,7 @@ manageRisk stopLossMap cumQty (Just avgCostPrice)
         let stopLossBuy =
                 prepareOrder
                     Nothing
-                    (fromJust $ HM.lookup "BUY" stopLossMap)
+                    (fromJust $ HM.lookup "LONG_POSITION_STOP_LOSS" stopLossMap)
                     Nothing
                     (Just Sell)
                     (avgCostPrice * 0.95)
@@ -49,8 +50,8 @@ manageRisk stopLossMap cumQty (Just avgCostPrice)
         time <- liftIO $ makeTimestamp <$> getPOSIXTime
         let stopLossSell =
                 prepareOrder
-                    (Just "sellstoploss")
-                    (fromJust $ HM.lookup "SELL" stopLossMap)
+                    Nothing
+                    (fromJust $ HM.lookup "SHORT_POSITION_STOP_LOSS" stopLossMap)
                     Nothing
                     (Just Buy)
                     (avgCostPrice * 1.05)
@@ -130,6 +131,7 @@ bulkAmendOrders ::
        [Mex.Order]
     -> BitMEXReader IO (Mex.MimeResult [Mex.Order])
 bulkAmendOrders orders = do
+    print orders
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderAmendBulk
                 (Mex.ContentType Mex.MimeJSON)
@@ -155,7 +157,8 @@ prepareOrder linkId clientId orderType side price stopPx orderQty executionType 
     { Mex.orderSymbol = Just ((T.pack . show) XBTUSD)
     , Mex.orderOrdType = fmap (T.pack . show) orderType
     , Mex.orderClOrdLinkId = linkId
-    , Mex.orderClOrdId = Just clientId
+    -- , Mex.orderClOrdId = Just clientId
+    , Mex.orderOrderId = clientId
     , Mex.orderSide = fmap (T.pack . show) side
     , Mex.orderPrice = Just price
     , Mex.orderStopPx = stopPx

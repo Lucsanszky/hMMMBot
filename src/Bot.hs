@@ -23,8 +23,12 @@ import           Data.Aeson
     )
 import           Data.ByteString.Char8         (pack)
 import qualified Data.HashMap.Strict           as HM
+    ( lookup
+    )
+import qualified Data.HashMap.Strict           as HM
     ( insert
     )
+import           Data.Maybe                    (fromJust)
 import qualified Data.Text                     as T (pack)
 import           Data.Time.Clock.POSIX
     ( getPOSIXTime
@@ -82,22 +86,55 @@ tradeLoop botState@(BotState {..}) conn = do
         RespOrderBook10 {asks = obAsks, bids = obBids} =
             head orderbookData
     -- Setup placeholder stoploss orders
-    initStopLossOrders time
-    slm <- liftIO $ atomically $ readTVar stopLossMap
-    liftIO $
-        atomically $
-        writeTVar stopLossMap $
-        HM.insert
-            "SELL"
-            ("buyteststop" <> (T.pack . show) time) $
-        HM.insert
-            "BUY"
-            ("buyteststop" <> (T.pack . show) time)
-            slm
+    Mex.MimeResult {mimeResult = res} <-
+        initStopLossOrders time
+    let Right orders = res
+    mapM_
+        (\Mex.Order {orderOrderId = oid, orderSide = oside} ->
+             if oside == Just "Buy"
+                 then do
+                     slm <- liftIO $ atomically $ readTVar stopLossMap
+                     liftIO $
+                         atomically $
+                         writeTVar stopLossMap $
+                         HM.insert "SHORT_POSITION_STOP_LOSS" oid slm
+                 else do
+                     slm <- liftIO $ atomically $ readTVar stopLossMap
+                     liftIO $
+                         atomically $
+                         writeTVar stopLossMap $
+                         HM.insert "LONG_POSITION_STOP_LOSS" oid slm)
+        orders
+    -- liftIO $
+    --     atomically $
+    --     writeTVar stopLossMap $
+    --     HM.insert
+    --         "SELL"
+    --         ("buyteststop" <> (T.pack . show) time) $
+    --     HM.insert
+    --         "BUY"
+    --         ("buyteststop" <> (T.pack . show) time)
+    --         slm
     _ <-
         liftIO $
         forkIO $ forever $ do riskLoop botState config
-    trade botState (head $ head obAsks, head $ head obBids)
+    slmap <- liftIO $ atomically $ readTVar stopLossMap
+    -- print (fromJust $ HM.lookup "BUY" slmap)
+    let stopLossBuy =
+            prepareOrder
+                Nothing
+                (fromJust $ HM.lookup "LONG_POSITION_STOP_LOSS" slmap)
+                Nothing
+                (Just Sell)
+                ((head $ head obBids) - 1000)
+                (Just ((head $ head obBids) - 999))
+                6
+                Nothing
+                Nothing
+    res <- bulkAmendOrders [stopLossBuy]
+    print res
+    return ()
+    -- trade botState (head $ head obAsks, head $ head obBids)
 
 riskLoop :: BotState -> BitMEXWrapperConfig -> IO ()
 riskLoop botState@BotState {..} config = do
