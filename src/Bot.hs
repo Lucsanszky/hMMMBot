@@ -91,22 +91,7 @@ tradeLoop = do
     _ <-
         liftIO $
         forkIO $ forever $ do riskLoop botState config
-    slmap <- liftIO $ atomically $ readTVar stopLossMap
-    let stopLossBuy =
-            prepareOrder
-                Nothing
-                (fromJust $
-                 HM.lookup "LONG_POSITION_STOP_LOSS" slmap)
-                Nothing
-                (Just Sell)
-                ((head $ head obBids) - 1000)
-                (Just ((head $ head obBids) - 999))
-                6
-                Nothing
-                Nothing
-    res <- bulkAmendOrders [stopLossBuy]
-    return ()
-    -- trade botState (head $ head obAsks, head $ head obBids)
+    trade (head $ head obAsks, head $ head obBids)
 
 riskLoop :: BotState -> BitMEXWrapperConfig -> IO ()
 riskLoop botState@BotState {..} config = do
