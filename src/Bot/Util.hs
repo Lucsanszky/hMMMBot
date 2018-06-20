@@ -44,8 +44,8 @@ manageRisk cumQty (Just avgCostPrice)
                      HM.lookup "LONG_POSITION_STOP_LOSS" slm)
                     Nothing
                     (Just Sell)
-                    (avgCostPrice * 0.95)
-                    (Just (avgCostPrice * 0.95 + 1))
+                    (fromIntegral $ floor $ avgCostPrice * 0.95)
+                    (Just (fromIntegral $ floor $ avgCostPrice * 0.95 + 1))
                     cumQty
                     Nothing
                     Nothing
@@ -65,8 +65,8 @@ manageRisk cumQty (Just avgCostPrice)
                          slm)
                     Nothing
                     (Just Buy)
-                    (avgCostPrice * 1.05)
-                    (Just (avgCostPrice * 1.05 - 1))
+                    (fromIntegral $ floor $ avgCostPrice * 1.05)
+                    (Just (fromIntegral $ floor $ avgCostPrice * 1.05 - 1))
                     cumQty
                     Nothing
                     Nothing
