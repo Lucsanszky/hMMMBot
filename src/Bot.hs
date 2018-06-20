@@ -14,6 +14,7 @@ import           Control.Concurrent.STM.TVar
 import qualified Control.Monad.Reader          as R
     ( ask
     , asks
+    , lift
     , runReaderT
     )
 import           Control.Monad.STM
@@ -41,8 +42,9 @@ import qualified Network.HTTP.Types.Status     as HTTP
     ( Status (..)
     )
 
-trade :: BotState -> (Double, Double) -> BitMEXReader IO ()
-trade botState@(BotState {..}) (bestAsk, bestBid) = do
+trade :: (Double, Double) -> BitMEXBot IO ()
+trade (bestAsk, bestBid) = do
+    botState@(BotState {..}) <- R.ask
     OB10 (TABLE {_data = orderbookData}) <-
         liftIO $ atomically $ readResponse lobQueue
     let RespOrderBook10 {asks = obAsks, bids = obBids} =
@@ -53,16 +55,14 @@ trade botState@(BotState {..}) (bestAsk, bestBid) = do
         False ->
             case newBestBid /= bestBid of
                 False -> do
-                    trade botState (bestAsk, bestBid)
+                    trade (bestAsk, bestBid)
                 True -> do
                     Mex.MimeResult {Mex.mimeResultResponse = resp} <-
                         makeMarket bestAsk newBestBid
                     let HTTP.Status {statusCode = code} =
                             responseStatus resp
                     if code == 200
-                        then trade
-                                 botState
-                                 (bestAsk, newBestBid)
+                        then trade (bestAsk, newBestBid)
                         else fail "order didn't go through"
         True -> do
             Mex.MimeResult {Mex.mimeResultResponse = resp} <-
@@ -70,12 +70,13 @@ trade botState@(BotState {..}) (bestAsk, bestBid) = do
             let HTTP.Status {statusCode = code} =
                     responseStatus resp
             if code == 200
-                then trade botState (newBestAsk, bestBid)
+                then trade (newBestAsk, bestBid)
                 else fail "order didn't go through"
 
-tradeLoop :: BotState -> BitMEXApp IO ()
-tradeLoop botState@(BotState {..}) conn = do
-    config <- R.ask
+tradeLoop :: BitMEXBot IO ()
+tradeLoop = do
+    config <- BitMEXBot $ R.lift $ R.ask
+    botState@(BotState {..}) <- R.ask
     time <- liftIO $ makeTimestamp <$> getPOSIXTime
     M (TABLE {_data = marginData}) <-
         liftIO $ atomically $ readResponse marginQueue
@@ -93,17 +94,27 @@ tradeLoop botState@(BotState {..}) conn = do
         (\Mex.Order {orderOrderId = oid, orderSide = oside} ->
              if oside == Just "Buy"
                  then do
-                     slm <- liftIO $ atomically $ readTVar stopLossMap
+                     slm <-
+                         liftIO $
+                         atomically $ readTVar stopLossMap
                      liftIO $
                          atomically $
                          writeTVar stopLossMap $
-                         HM.insert "SHORT_POSITION_STOP_LOSS" oid slm
+                         HM.insert
+                             "SHORT_POSITION_STOP_LOSS"
+                             oid
+                             slm
                  else do
-                     slm <- liftIO $ atomically $ readTVar stopLossMap
+                     slm <-
+                         liftIO $
+                         atomically $ readTVar stopLossMap
                      liftIO $
                          atomically $
                          writeTVar stopLossMap $
-                         HM.insert "LONG_POSITION_STOP_LOSS" oid slm)
+                         HM.insert
+                             "LONG_POSITION_STOP_LOSS"
+                             oid
+                             slm)
         orders
     -- liftIO $
     --     atomically $
@@ -123,7 +134,8 @@ tradeLoop botState@(BotState {..}) conn = do
     let stopLossBuy =
             prepareOrder
                 Nothing
-                (fromJust $ HM.lookup "LONG_POSITION_STOP_LOSS" slmap)
+                (fromJust $
+                 HM.lookup "LONG_POSITION_STOP_LOSS" slmap)
                 Nothing
                 (Just Sell)
                 ((head $ head obBids) - 1000)
@@ -140,7 +152,11 @@ riskLoop :: BotState -> BitMEXWrapperConfig -> IO ()
 riskLoop botState@BotState {..} config = do
     (qty, price) <- atomically $ riskManager positionQueue
     slm <- atomically $ readTVar stopLossMap
-    R.runReaderT (run (manageRisk slm qty price)) config
+    R.runReaderT
+        (run (R.runReaderT
+                  (runBot (manageRisk qty price))
+                  botState))
+        config
 
 initBot :: BitMEXApp IO ()
 initBot conn = do
@@ -191,5 +207,5 @@ initBot conn = do
             forever $ do
                 msg <- getMessage conn config
                 atomically $ processResponse botState msg
-    -- R.runReaderT (runBot botLoop) state
-    tradeLoop botState conn
+    R.runReaderT (runBot tradeLoop) botState
+    -- tradeLoop botState conn

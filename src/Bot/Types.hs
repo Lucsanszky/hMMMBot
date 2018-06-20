@@ -1,11 +1,16 @@
 module Bot.Types
     ( BotState(..)
+    , BitMEXBot(..)
     ) where
 
 import           BasicPrelude
 import           BitMEXClient
 import           Control.Concurrent.STM.TQueue
 import           Control.Concurrent.STM.TVar
+import           Control.Monad.Reader
+    ( MonadReader
+    , ReaderT
+    )
 import           Network.WebSockets            (Connection)
 
 data BotState = BotState
@@ -19,11 +24,12 @@ data BotState = BotState
     , positionsMap   :: !(TVar (HashMap Text (Double, Double)))
     , stopLossMap    :: !(TVar (HashMap Text Text))
     }
--- newtype BitMEXBot m a = BitMEXBot
---     { runBot :: (R.ReaderT BotState (BitMEXReader m) a)
---     } deriving ( Applicative
---                , Functor
---                , Monad
---                , MonadIO
---                , R.MonadReader BotState
---                )
+
+newtype BitMEXBot m a = BitMEXBot
+    { runBot :: (ReaderT BotState (BitMEXReader m) a)
+    } deriving ( Applicative
+               , Functor
+               , Monad
+               , MonadIO
+               , MonadReader BotState
+               )

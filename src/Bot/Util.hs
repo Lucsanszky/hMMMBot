@@ -12,31 +12,36 @@ module Bot.Util
     ) where
 
 import           BasicPrelude
-import qualified BitMEX                as Mex
+import qualified BitMEX                      as Mex
 import           BitMEXClient
+import           Bot.Types
+import           Control.Concurrent.STM.TVar
+import qualified Control.Monad.Reader        as R (asks)
+import           Control.Monad.STM
 import           Data.Aeson
     ( Value (String)
     , encode
     , toJSON
     )
-import qualified Data.HashMap.Strict   as HM (lookup)
-import           Data.Maybe            (fromJust)
-import qualified Data.Text             as T (pack)
-import           Data.Time.Clock.POSIX (getPOSIXTime)
+import qualified Data.HashMap.Strict         as HM (lookup)
+import           Data.Maybe                  (fromJust)
+import qualified Data.Text                   as T (pack)
+import           Data.Time.Clock.POSIX       (getPOSIXTime)
+
 
 manageRisk ::
-       HashMap Text Text
-    -> Double
+    Double
     -> Maybe Double
-    -> BitMEXReader IO ()
-manageRisk stopLossMap _ Nothing = return ()
-manageRisk stopLossMap cumQty (Just avgCostPrice)
+    -> BitMEXBot IO ()
+manageRisk _ Nothing = return ()
+manageRisk cumQty (Just avgCostPrice)
     | cumQty > 0 = do
         time <- liftIO $ makeTimestamp <$> getPOSIXTime
+        slm <- R.asks stopLossMap >>= (liftIO . atomically . readTVar)
         let stopLossBuy =
                 prepareOrder
                     Nothing
-                    (fromJust $ HM.lookup "LONG_POSITION_STOP_LOSS" stopLossMap)
+                    (fromJust $ HM.lookup "LONG_POSITION_STOP_LOSS" slm)
                     Nothing
                     (Just Sell)
                     (avgCostPrice * 0.95)
@@ -48,10 +53,11 @@ manageRisk stopLossMap cumQty (Just avgCostPrice)
         return ()
     | otherwise = do
         time <- liftIO $ makeTimestamp <$> getPOSIXTime
+        slm <- R.asks stopLossMap >>= (liftIO . atomically . readTVar)
         let stopLossSell =
                 prepareOrder
                     Nothing
-                    (fromJust $ HM.lookup "SHORT_POSITION_STOP_LOSS" stopLossMap)
+                    (fromJust $ HM.lookup "SHORT_POSITION_STOP_LOSS" slm)
                     Nothing
                     (Just Buy)
                     (avgCostPrice * 1.05)
@@ -63,7 +69,7 @@ manageRisk stopLossMap cumQty (Just avgCostPrice)
         return ()
 
 initStopLossOrders ::
-       Int -> BitMEXReader IO (Mex.MimeResult [Mex.Order])
+       Int -> BitMEXBot IO (Mex.MimeResult [Mex.Order])
 initStopLossOrders time = do
     let stopLossBuy =
             prepareOrder
@@ -91,7 +97,7 @@ initStopLossOrders time = do
 
 placeBulkOrder ::
        [Mex.Order]
-    -> BitMEXReader IO (Mex.MimeResult [Mex.Order])
+    -> BitMEXBot IO (Mex.MimeResult [Mex.Order])
 placeBulkOrder orders = do
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderNewBulk
@@ -100,11 +106,11 @@ placeBulkOrder orders = do
         orderRequest =
             Mex._setBodyLBS orderTemplate $
             "{\"orders\": " <> encode orders <> "}"
-    makeRequest orderRequest
+    BitMEXBot . lift $ makeRequest orderRequest
 
 placeOrder ::
        Mex.Order
-    -> BitMEXReader IO (Mex.MimeResult Mex.Order)
+    -> BitMEXBot IO (Mex.MimeResult Mex.Order)
 placeOrder order = do
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderNew
@@ -113,11 +119,11 @@ placeOrder order = do
                 (Mex.Symbol ((T.pack . show) XBTUSD))
         orderRequest =
             Mex._setBodyLBS orderTemplate $ encode order
-    makeRequest orderRequest
+    BitMEXBot . lift $ makeRequest orderRequest
 
 amendOrder ::
        Mex.Order
-    -> BitMEXReader IO (Mex.MimeResult Mex.Order)
+    -> BitMEXBot IO (Mex.MimeResult Mex.Order)
 amendOrder order = do
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderAmend
@@ -125,11 +131,11 @@ amendOrder order = do
                 (Mex.Accept Mex.MimeJSON)
         orderRequest =
             Mex._setBodyLBS orderTemplate $ encode order
-    makeRequest orderRequest
+    BitMEXBot . lift $ makeRequest orderRequest
 
 bulkAmendOrders ::
        [Mex.Order]
-    -> BitMEXReader IO (Mex.MimeResult [Mex.Order])
+    -> BitMEXBot IO (Mex.MimeResult [Mex.Order])
 bulkAmendOrders orders = do
     print orders
     let orderTemplate@(Mex.BitMEXRequest {..}) =
@@ -139,7 +145,7 @@ bulkAmendOrders orders = do
         orderRequest =
             Mex._setBodyLBS orderTemplate $
             "{\"orders\": " <> encode orders <> "}"
-    makeRequest orderRequest
+    BitMEXBot . lift $ makeRequest orderRequest
 
 prepareOrder ::
        Maybe Text
@@ -171,7 +177,7 @@ prepareOrder linkId clientId orderType side price stopPx orderQty executionType 
 makeMarket ::
        Double
     -> Double
-    -> BitMEXReader IO (Mex.MimeResult [Mex.Order])
+    -> BitMEXBot IO (Mex.MimeResult [Mex.Order])
 makeMarket ask bid = do
     time <- liftIO $ makeTimestamp <$> getPOSIXTime
     let buyOrder =
