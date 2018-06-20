@@ -87,50 +87,11 @@ tradeLoop = do
         RespOrderBook10 {asks = obAsks, bids = obBids} =
             head orderbookData
     -- Setup placeholder stoploss orders
-    Mex.MimeResult {mimeResult = res} <-
-        initStopLossOrders time
-    let Right orders = res
-    mapM_
-        (\Mex.Order {orderOrderId = oid, orderSide = oside} ->
-             if oside == Just "Buy"
-                 then do
-                     slm <-
-                         liftIO $
-                         atomically $ readTVar stopLossMap
-                     liftIO $
-                         atomically $
-                         writeTVar stopLossMap $
-                         HM.insert
-                             "SHORT_POSITION_STOP_LOSS"
-                             oid
-                             slm
-                 else do
-                     slm <-
-                         liftIO $
-                         atomically $ readTVar stopLossMap
-                     liftIO $
-                         atomically $
-                         writeTVar stopLossMap $
-                         HM.insert
-                             "LONG_POSITION_STOP_LOSS"
-                             oid
-                             slm)
-        orders
-    -- liftIO $
-    --     atomically $
-    --     writeTVar stopLossMap $
-    --     HM.insert
-    --         "SELL"
-    --         ("buyteststop" <> (T.pack . show) time) $
-    --     HM.insert
-    --         "BUY"
-    --         ("buyteststop" <> (T.pack . show) time)
-    --         slm
+    initStopLossOrders time
     _ <-
         liftIO $
         forkIO $ forever $ do riskLoop botState config
     slmap <- liftIO $ atomically $ readTVar stopLossMap
-    -- print (fromJust $ HM.lookup "BUY" slmap)
     let stopLossBuy =
             prepareOrder
                 Nothing
@@ -144,7 +105,6 @@ tradeLoop = do
                 Nothing
                 Nothing
     res <- bulkAmendOrders [stopLossBuy]
-    print res
     return ()
     -- trade botState (head $ head obAsks, head $ head obBids)
 
@@ -208,4 +168,3 @@ initBot conn = do
                 msg <- getMessage conn config
                 atomically $ processResponse botState msg
     R.runReaderT (runBot tradeLoop) botState
-    -- tradeLoop botState conn
