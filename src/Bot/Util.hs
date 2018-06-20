@@ -30,7 +30,7 @@ manageRisk ::
     -> BitMEXReader IO ()
 manageRisk stopLossMap _ Nothing = return ()
 manageRisk stopLossMap cumQty (Just avgCostPrice)
-    | cumQty < 0 = do
+    | cumQty > 0 = do
         time <- liftIO $ makeTimestamp <$> getPOSIXTime
         let stopLossBuy =
                 prepareOrder
