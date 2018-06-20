@@ -73,6 +73,16 @@ manageRisk cumQty (Just avgCostPrice)
         res <- bulkAmendOrders [stopLossSell]
         return ()
 
+insertStopLossOrder :: Text -> Text -> BitMEXBot IO ()
+insertStopLossOrder id stopLossType = do
+    stopMap <- R.asks stopLossMap
+    slm <-
+        R.asks stopLossMap >>=
+        (liftIO . atomically . readTVar)
+    liftIO $
+        atomically $
+        writeTVar stopMap $ HM.insert stopLossType id slm
+
 initStopLossOrders :: Int -> BitMEXBot IO ()
 initStopLossOrders time = do
     let stopLossBuy =
@@ -99,35 +109,26 @@ initStopLossOrders time = do
                 (Just OCO)
     Mex.MimeResult {mimeResult = res} <-
         placeBulkOrder [stopLossBuy, stopLossSell]
-    let Right orders = res
-    mapM_
-        (\Mex.Order {orderOrderId = oid, orderSide = oside} ->
-             if oside == Just "Buy"
-                 then do
-                     stopMap <- R.asks stopLossMap
-                     slm <-
-                         R.asks stopLossMap >>=
-                         (liftIO . atomically . readTVar)
-                     liftIO $
-                         atomically $
-                         writeTVar stopMap $
-                         HM.insert
-                             "SHORT_POSITION_STOP_LOSS"
-                             oid
-                             slm
-                 else do
-                     stopMap <- R.asks stopLossMap
-                     slm <-
-                         R.asks stopLossMap >>=
-                         (liftIO . atomically . readTVar)
-                     liftIO $
-                         atomically $
-                         writeTVar stopMap $
-                         HM.insert
-                             "LONG_POSITION_STOP_LOSS"
-                             oid
-                             slm)
-        orders
+    case res of
+        Left (Mex.MimeError {mimeError = s}) -> fail s
+        Right orders ->
+            mapM_
+                (\Mex.Order { orderOrderId = oid
+                            , orderSide = oside
+                            } ->
+                     case oside of
+                         Nothing ->
+                             fail
+                                 "CRITICAL: order side is missing"
+                         Just s ->
+                             if s == "Buy"
+                                 then insertStopLossOrder
+                                          oid
+                                          "SHORT_POSITION_STOP_LOSS"
+                                 else insertStopLossOrder
+                                          oid
+                                          "LONG_POSITION_STOP_LOSS")
+                orders
 
 placeBulkOrder ::
        [Mex.Order]
