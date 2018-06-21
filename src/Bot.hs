@@ -42,6 +42,10 @@ import qualified Network.HTTP.Types.Status     as HTTP
     ( Status (..)
     )
 
+_MAX_POSITION_ = 42 :: Int
+
+_ORDER_SIZE_ = 21 :: Int
+
 trade :: (Double, Double) -> BitMEXBot IO ()
 trade (bestAsk, bestBid) = do
     botState@(BotState {..}) <- R.ask
@@ -51,27 +55,44 @@ trade (bestAsk, bestBid) = do
             head orderbookData
         newBestAsk = head $ head obAsks
         newBestBid = head $ head obBids
+    size <- liftIO $ atomically $ readTVar positionSize
     case newBestAsk /= bestAsk of
         False ->
             case newBestBid /= bestBid of
                 False -> do
                     trade (bestAsk, bestBid)
                 True -> do
+                    if (_MAX_POSITION_ - (abs size) -
+                        _ORDER_SIZE_ >=
+                        0)
+                        then do
+                            Mex.MimeResult {Mex.mimeResultResponse = resp} <-
+                                makeMarket
+                                    bestAsk
+                                    newBestBid
+                            let HTTP.Status {statusCode = code} =
+                                    responseStatus resp
+                            if code == 200
+                                then trade
+                                         ( bestAsk
+                                         , newBestBid)
+                                else fail
+                                         "order didn't go through"
+                        else do
+                            trade (bestAsk, newBestBid)
+        True -> do
+            if (_MAX_POSITION_ - (abs size) - _ORDER_SIZE_ >=
+                0)
+                then do
                     Mex.MimeResult {Mex.mimeResultResponse = resp} <-
-                        makeMarket bestAsk newBestBid
+                        makeMarket newBestAsk bestBid
                     let HTTP.Status {statusCode = code} =
                             responseStatus resp
                     if code == 200
-                        then trade (bestAsk, newBestBid)
+                        then trade (newBestAsk, bestBid)
                         else fail "order didn't go through"
-        True -> do
-            Mex.MimeResult {Mex.mimeResultResponse = resp} <-
-                makeMarket newBestAsk bestBid
-            let HTTP.Status {statusCode = code} =
-                    responseStatus resp
-            if code == 200
-                then trade (newBestAsk, bestBid)
-                else fail "order didn't go through"
+                else do
+                    trade (newBestAsk, bestBid)
 
 tradeLoop :: BitMEXBot IO ()
 tradeLoop = do
@@ -90,6 +111,10 @@ tradeLoop = do
     initStopLossOrders time
     _ <-
         liftIO $
+        forkIO $
+        forever $ do positionTracker botState config
+    _ <-
+        liftIO $
         forkIO $ forever $ do riskLoop botState config
     trade (head $ head obAsks, head $ head obBids)
 
@@ -103,6 +128,29 @@ riskLoop botState@BotState {..} config = do
                   botState))
         config
 
+positionTracker :: BotState -> BitMEXWrapperConfig -> IO ()
+positionTracker botState@BotState {..} config
+    -- (qty, price) <- atomically $ riskManager positionQueue
+ = do
+    resp <- atomically $ readResponse positionQueue
+    case resp of
+        P (TABLE {_data = positionData}) -> do
+            let RespPosition {currentQty = qty} =
+                    head positionData
+            case qty of
+                Nothing -> return ()
+                Just q -> do
+                    R.runReaderT
+                        (run (R.runReaderT
+                                  (runBot
+                                       (updatePositionSize q))
+                                  botState))
+                        config
+                    size <-
+                        atomically $ readTVar positionSize
+                    print size
+        _ -> return ()
+
 initBot :: BitMEXApp IO ()
 initBot conn = do
     config <- R.ask
@@ -115,10 +163,7 @@ initBot conn = do
     marginQueue <- liftIO $ atomically newTQueue
     executionQueue <- liftIO $ atomically newTQueue
     messageQueue <- liftIO $ atomically newTQueue
-    positionsMap <-
-        liftIO $
-        atomically $
-        newTVar (mempty :: HashMap Text (Double, Double))
+    positionSize <- liftIO $ atomically $ newTVar 0
     stopLossMap <-
         liftIO $
         atomically $ newTVar (mempty :: HashMap Text Text)
@@ -131,7 +176,7 @@ initBot conn = do
             , marginQueue = marginQueue
             , executionQueue = executionQueue
             , messageQueue = messageQueue
-            , positionsMap = positionsMap
+            , positionSize = positionSize
             , stopLossMap = stopLossMap
             }
     liftIO $ do

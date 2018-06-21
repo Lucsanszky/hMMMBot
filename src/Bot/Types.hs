@@ -21,7 +21,7 @@ data BotState = BotState
     , marginQueue    :: !(TQueue (Maybe Response))
     , executionQueue :: !(TQueue (Maybe Response))
     , messageQueue   :: !(TQueue (Maybe Response))
-    , positionsMap   :: !(TVar (HashMap Text (Double, Double)))
+    , positionSize   :: !(TVar Int)
     , stopLossMap    :: !(TVar (HashMap Text Text))
     }
 

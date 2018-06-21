@@ -6,6 +6,7 @@ module Bot.Util
     , amendOrder
     , initStopLossOrders
     , manageRisk
+    , updatePositionSize
     , bulkAmendOrders
     ) where
 
@@ -28,6 +29,11 @@ import qualified Data.HashMap.Strict         as HM
 import           Data.Maybe                  (fromJust)
 import qualified Data.Text                   as T (pack)
 import           Data.Time.Clock.POSIX       (getPOSIXTime)
+
+updatePositionSize :: Double -> BitMEXBot IO ()
+updatePositionSize x =
+    R.asks positionSize >>= \p ->
+        (liftIO . atomically) $ writeTVar p (floor x)
 
 manageRisk :: Double -> Maybe Double -> BitMEXBot IO ()
 manageRisk _ Nothing = return ()
@@ -240,7 +246,7 @@ makeMarket ask bid = do
                 (Just Buy)
                 (Just bid)
                 Nothing
-                (Just 66)
+                (Just 21)
                 Nothing
                 Nothing
         sellOrder =
@@ -252,7 +258,7 @@ makeMarket ask bid = do
                 (Just Sell)
                 (Just ask)
                 Nothing
-                (Just 66)
+                (Just 21)
                 Nothing
                 Nothing
     placeBulkOrder [buyOrder, sellOrder]
