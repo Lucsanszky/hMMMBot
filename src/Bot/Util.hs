@@ -55,7 +55,7 @@ manageRisk cumQty (Just avgCostPrice)
                     Nothing
         res <- bulkAmendOrders [stopLossBuy]
         return ()
-    | otherwise = do
+    | cumQty < 0 = do
         time <- liftIO $ makeTimestamp <$> getPOSIXTime
         slm <-
             R.asks stopLossMap >>=
@@ -80,6 +80,7 @@ manageRisk cumQty (Just avgCostPrice)
                     Nothing
         res <- bulkAmendOrders [stopLossSell]
         return ()
+    | otherwise = return ()
 
 insertStopLossOrder :: Text -> Text -> BitMEXBot IO ()
 insertStopLossOrder id stopLossType = do
