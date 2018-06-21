@@ -39,14 +39,18 @@ manageRisk cumQty (Just avgCostPrice)
             (liftIO . atomically . readTVar)
         let stopLossBuy =
                 prepareOrder
+                    (HM.lookup "LONG_POSITION_STOP_LOSS" slm)
                     Nothing
-                    (fromJust $
-                     HM.lookup "LONG_POSITION_STOP_LOSS" slm)
+                    Nothing
                     Nothing
                     (Just Sell)
-                    (fromIntegral $ floor $ avgCostPrice * 0.95)
-                    (Just (fromIntegral $ floor $ avgCostPrice * 0.95 + 1))
-                    cumQty
+                    (Just
+                         (fromIntegral $
+                          floor $ avgCostPrice * 0.95))
+                    (Just
+                         (fromIntegral $
+                          floor $ avgCostPrice * 0.95 + 1))
+                    (Just cumQty)
                     Nothing
                     Nothing
         res <- bulkAmendOrders [stopLossBuy]
@@ -58,16 +62,20 @@ manageRisk cumQty (Just avgCostPrice)
             (liftIO . atomically . readTVar)
         let stopLossSell =
                 prepareOrder
-                    Nothing
-                    (fromJust $
-                     HM.lookup
+                    (HM.lookup
                          "SHORT_POSITION_STOP_LOSS"
                          slm)
                     Nothing
+                    Nothing
+                    Nothing
                     (Just Buy)
-                    (fromIntegral $ floor $ avgCostPrice * 1.05)
-                    (Just (fromIntegral $ floor $ avgCostPrice * 1.05 - 1))
-                    cumQty
+                    (Just
+                         (fromIntegral $
+                          floor $ avgCostPrice * 1.05))
+                    (Just
+                         (fromIntegral $
+                          floor $ avgCostPrice * 1.05 - 1))
+                    (Just cumQty)
                     Nothing
                     Nothing
         res <- bulkAmendOrders [stopLossSell]
@@ -87,26 +95,28 @@ initStopLossOrders :: Int -> BitMEXBot IO ()
 initStopLossOrders time = do
     let stopLossBuy =
             prepareOrder
-                (Just "buystoploss")
-                ("buyteststop" <> (T.pack . show) time)
+                Nothing
+                Nothing
+                Nothing
                 (Just StopLimit)
                 (Just Sell)
-                0.5
+                (Just 0.5)
                 (Just 1)
-                1
+                (Just 1)
                 (Just LastPrice)
-                (Just OCO)
+                Nothing
         stopLossSell =
             prepareOrder
-                (Just "sellstoploss")
-                ("sellteststop" <> (T.pack . show) time)
+                Nothing
+                Nothing
+                Nothing
                 (Just StopLimit)
                 (Just Buy)
-                1000000
+                (Just 1000000)
                 (Just 99999)
-                1
+                (Just 1)
                 (Just LastPrice)
-                (Just OCO)
+                Nothing
     Mex.MimeResult {mimeResult = res} <-
         placeBulkOrder [stopLossBuy, stopLossSell]
     case res of
@@ -182,30 +192,37 @@ bulkAmendOrders orders = do
 
 prepareOrder ::
        Maybe Text
-    -> Text
+    -> Maybe Text
+    -> Maybe Text
     -> Maybe OrderType
     -> Maybe Side
-    -> Double
     -> Maybe Double
-    -> Double
+    -> Maybe Double
+    -> Maybe Double
     -> Maybe ExecutionInstruction
     -> Maybe ContingencyType
     -> Mex.Order
-prepareOrder linkId clientId orderType side price stopPx orderQty executionType contingencyType =
-    (Mex.mkOrder clientId)
-    { Mex.orderSymbol = Just ((T.pack . show) XBTUSD)
-    , Mex.orderOrdType = fmap (T.pack . show) orderType
-    , Mex.orderClOrdLinkId = linkId
-    -- , Mex.orderClOrdId = Just clientId
-    , Mex.orderOrderId = clientId
-    , Mex.orderSide = fmap (T.pack . show) side
-    , Mex.orderPrice = Just price
-    , Mex.orderStopPx = stopPx
-    , Mex.orderExecInst = fmap (T.pack . show) executionType
-    , Mex.orderContingencyType =
-          fmap (T.pack . show) contingencyType
-    , Mex.orderOrderQty = Just orderQty
-    }
+prepareOrder ordId clientId linkId orderType side price stopPx orderQty executionType contingencyType = do
+    let order =
+            (Mex.mkOrder "")
+            { Mex.orderSymbol =
+                  Just ((T.pack . show) XBTUSD)
+            , Mex.orderClOrdId = clientId
+            , Mex.orderClOrdLinkId = linkId
+            , Mex.orderOrdType =
+                  fmap (T.pack . show) orderType
+            , Mex.orderSide = fmap (T.pack . show) side
+            , Mex.orderPrice = price
+            , Mex.orderStopPx = stopPx
+            , Mex.orderOrderQty = orderQty
+            , Mex.orderExecInst =
+                  fmap (T.pack . show) executionType
+            , Mex.orderContingencyType =
+                  fmap (T.pack . show) contingencyType
+            }
+    case ordId of
+        Nothing -> order
+        Just id -> order {Mex.orderOrderId = id}
 
 makeMarket ::
        Double
@@ -215,24 +232,26 @@ makeMarket ask bid = do
     time <- liftIO $ makeTimestamp <$> getPOSIXTime
     let buyOrder =
             prepareOrder
-                (Just "buytest")
-                ("buytestlimit" <> (T.pack . show) time)
+                Nothing
+                Nothing
+                Nothing
                 (Just Limit)
                 (Just Buy)
-                bid
+                (Just bid)
                 Nothing
-                66
+                (Just 66)
                 Nothing
                 Nothing
         sellOrder =
             prepareOrder
-                (Just "selltest")
-                ("selltestlimit" <> (T.pack . show) time)
+                Nothing
+                Nothing
+                Nothing
                 (Just Limit)
                 (Just Sell)
-                ask
+                (Just ask)
                 Nothing
-                66
+                (Just 66)
                 Nothing
                 Nothing
     placeBulkOrder [buyOrder, sellOrder]
