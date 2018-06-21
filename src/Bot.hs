@@ -112,10 +112,10 @@ tradeLoop = do
     _ <-
         liftIO $
         forkIO $
-        forever $ do positionTracker botState config
+        forever $ positionTracker botState config
     _ <-
         liftIO $
-        forkIO $ forever $ do riskLoop botState config
+        forkIO $ forever $ riskLoop botState config
     trade (head $ head obAsks, head $ head obBids)
 
 riskLoop :: BotState -> BitMEXWrapperConfig -> IO ()
