@@ -1,7 +1,6 @@
 module Bot.Concurrent
     ( processResponse
     , readResponse
-    , riskManager
     ) where
 
 import           BasicPrelude                  hiding (head)
@@ -10,23 +9,6 @@ import           Bot.Types
 import           Control.Concurrent.STM.TQueue
 import           Control.Monad.STM
 import           Data.Vector                   (head, (!?))
-
-riskManager ::
-       TQueue (Maybe Response) -> STM (Double, Maybe Double)
-riskManager positionQueue = do
-    r <- readTQueue positionQueue
-    case r of
-        Nothing -> retry
-        Just x ->
-            case x of
-                P (TABLE {_data = positionData}) -> do
-                    let RespPosition { currentQty = qty
-                                     , avgCostPrice = price
-                                     } = head positionData
-                    case qty of
-                        Nothing -> retry
-                        Just q  -> return (q, price)
-                _ -> retry
 
 processResponse :: BotState -> Maybe Response -> STM ()
 processResponse (BotState {..}) msg = do

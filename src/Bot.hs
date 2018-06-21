@@ -111,27 +111,34 @@ tradeLoop = do
     initStopLossOrders time
     _ <-
         liftIO $
-        forkIO $
-        forever $ positionTracker botState config
+        forkIO $ forever $ positionTracker botState config
     _ <-
-        liftIO $
-        forkIO $ forever $ riskLoop botState config
+        liftIO $ forkIO $ forever $ riskManager botState config
     trade (head $ head obAsks, head $ head obBids)
 
-riskLoop :: BotState -> BitMEXWrapperConfig -> IO ()
-riskLoop botState@BotState {..} config = do
-    (qty, price) <- atomically $ riskManager positionQueue
-    slm <- atomically $ readTVar stopLossMap
-    R.runReaderT
-        (run (R.runReaderT
-                  (runBot (manageRisk qty price))
-                  botState))
-        config
+riskManager :: BotState -> BitMEXWrapperConfig -> IO ()
+riskManager botState@BotState {..} config = do
+    resp <- atomically $ readResponse positionQueue
+    case resp of
+        P (TABLE {_data = positionData}) -> do
+            let RespPosition { currentQty = qty
+                             , avgCostPrice = avgPrice
+                             } = head positionData
+            case qty of
+                Nothing -> return ()
+                Just q ->
+                    R.runReaderT
+                        (run (R.runReaderT
+                                  (runBot
+                                       (manageRisk
+                                            q
+                                            avgPrice))
+                                  botState))
+                        config
+        _ -> return ()
 
 positionTracker :: BotState -> BitMEXWrapperConfig -> IO ()
-positionTracker botState@BotState {..} config
-    -- (qty, price) <- atomically $ riskManager positionQueue
- = do
+positionTracker botState@BotState {..} config = do
     resp <- atomically $ readResponse positionQueue
     case resp of
         P (TABLE {_data = positionData}) -> do
