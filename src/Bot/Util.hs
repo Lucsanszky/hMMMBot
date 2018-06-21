@@ -15,6 +15,7 @@ import           BasicPrelude                hiding (head)
 import qualified BitMEX                      as Mex
 import           BitMEXClient
 import           Bot.Concurrent
+import           Bot.Math
 import           Bot.Types
 import           Control.Concurrent.STM.TVar
 import qualified Control.Monad.Reader        as R
@@ -213,12 +214,10 @@ manageRisk cumQty (Just avgCostPrice)
                     Nothing
                     Nothing
                     (Just Sell)
+                    (Just (roundPrice $ avgCostPrice * 0.95))
                     (Just
-                         (fromIntegral $
-                          floor $ avgCostPrice * 0.95))
-                    (Just
-                         (fromIntegral $
-                          floor $ avgCostPrice * 0.95 + 1))
+                         (roundPrice $
+                          avgCostPrice * 0.95 + 1))
                     (Just cumQty)
                     Nothing
                     Nothing
@@ -238,12 +237,10 @@ manageRisk cumQty (Just avgCostPrice)
                     Nothing
                     Nothing
                     (Just Buy)
+                    (Just (roundPrice $ avgCostPrice * 1.05))
                     (Just
-                         (fromIntegral $
-                          floor $ avgCostPrice * 1.05))
-                    (Just
-                         (fromIntegral $
-                          floor $ avgCostPrice * 1.05 - 1))
+                         (roundPrice $
+                          avgCostPrice * 1.05 - 1))
                     (Just cumQty)
                     Nothing
                     Nothing
