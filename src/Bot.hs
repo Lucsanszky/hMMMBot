@@ -113,50 +113,9 @@ tradeLoop = do
         liftIO $
         forkIO $ forever $ positionTracker botState config
     _ <-
-        liftIO $ forkIO $ forever $ riskManager botState config
+        liftIO $
+        forkIO $ forever $ riskManager botState config
     trade (head $ head obAsks, head $ head obBids)
-
-riskManager :: BotState -> BitMEXWrapperConfig -> IO ()
-riskManager botState@BotState {..} config = do
-    resp <- atomically $ readResponse positionQueue
-    case resp of
-        P (TABLE {_data = positionData}) -> do
-            let RespPosition { currentQty = qty
-                             , avgCostPrice = avgPrice
-                             } = head positionData
-            case qty of
-                Nothing -> return ()
-                Just q ->
-                    R.runReaderT
-                        (run (R.runReaderT
-                                  (runBot
-                                       (manageRisk
-                                            q
-                                            avgPrice))
-                                  botState))
-                        config
-        _ -> return ()
-
-positionTracker :: BotState -> BitMEXWrapperConfig -> IO ()
-positionTracker botState@BotState {..} config = do
-    resp <- atomically $ readResponse positionQueue
-    case resp of
-        P (TABLE {_data = positionData}) -> do
-            let RespPosition {currentQty = qty} =
-                    head positionData
-            case qty of
-                Nothing -> return ()
-                Just q -> do
-                    R.runReaderT
-                        (run (R.runReaderT
-                                  (runBot
-                                       (updatePositionSize q))
-                                  botState))
-                        config
-                    size <-
-                        atomically $ readTVar positionSize
-                    print size
-        _ -> return ()
 
 initBot :: BitMEXApp IO ()
 initBot conn = do
