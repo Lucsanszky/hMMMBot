@@ -54,6 +54,9 @@ executable hMMMBot
   other-modules: Bot
                  Bot.Concurrent
                  Bot.Util
+                 Bot.Math
+                 Bot.Types
+                 Bot.Logging
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
