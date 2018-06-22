@@ -73,6 +73,9 @@ executable hMMMBot
                      , haskell-bitmex-client
                      , basic-prelude
                      , bytestring >= 0.10
+                     , bloodhound
+                     , katip-elasticsearch
+                     , katip
                      , containers >= 0.5
                      , unordered-containers >= 0.2
                      , websockets >= 0.12

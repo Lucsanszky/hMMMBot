@@ -4,6 +4,7 @@ import           BasicPrelude            hiding (head)
 import qualified BitMEX                  as Mex
 import           BitMEXClient
 import           Bot
+import           Bot.Logging
 import qualified Data.ByteString         as B (readFile)
 import           Network.HTTP.Client     (newManager)
 import           Network.HTTP.Client.TLS
@@ -34,5 +35,5 @@ main = do
                   Mex.runDefaultLogExecWithContext
             , logContext = logCxt
             }
-    config <- return config0 >>= withStdoutLoggingWS
+    config <- return config0 >>= withEsLoggingWS
     connect config initBot
