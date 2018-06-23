@@ -19,10 +19,12 @@ import qualified System.Environment      as Env (getArgs)
 main :: IO ()
 main = do
     mgr <- newManager tlsManagerSettings
-    (pubPath:privPath:_) <- Env.getArgs
+    (pubPath:privPath:esUserPath:esPasswordPath:_) <- Env.getArgs
     pub <- readFile pubPath
     priv <- B.readFile privPath
-    logCxt <- Mex.initLogContext
+    user <- readFile esUserPath
+    pw <- readFile esPasswordPath
+    logCxt <- initEsLogContext
     let config0 =
             BitMEXWrapperConfig
             { environment = TestNet
@@ -35,5 +37,5 @@ main = do
                   Mex.runDefaultLogExecWithContext
             , logContext = logCxt
             }
-    config <- return config0 >>= withEsLoggingWS
+    config <- return config0 >>= withEsLoggingWS user pw
     connect config initBot

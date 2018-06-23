@@ -1,6 +1,7 @@
 module Bot.Logging
     ( esLoggingContext
     , withEsLoggingWS
+    , initEsLogContext
     ) where
 
 import           BasicPrelude
@@ -12,6 +13,7 @@ import           Katip
     , Severity (DebugS)
     , Verbosity (V3)
     , defaultScribeSettings
+    , initLogEnv
     , mkHandleScribe
     , registerScribe
     )
@@ -20,29 +22,34 @@ import           Network.HTTP.Client
     ( defaultManagerSettings
     , newManager
     )
+import           Network.HTTP.Client.TLS
+    ( tlsManagerSettings
+    )
+
+initEsLogContext :: IO LogContext
+initEsLogContext = initLogEnv "hMMMBot" "dev"
 
 withEsLoggingWS ::
-       BitMEXWrapperConfig -> IO BitMEXWrapperConfig
-withEsLoggingWS p = do
-    logCxt <- esLoggingContext (logContext p)
+       Text -> Text -> BitMEXWrapperConfig -> IO BitMEXWrapperConfig
+withEsLoggingWS user pw p = do
+    logCxt <- esLoggingContext (logContext p) user pw
     return $
         p
         { logExecContext = stdoutLoggingExec
         , logContext = logCxt
         }
 
-esLoggingContext :: LogContext -> IO LogContext
-esLoggingContext cxt
-    -- handleScribe <- LG.mkHandleScribe LG.ColorIfTerminal IO.stdout LG.InfoS LG.V2
+esLoggingContext :: LogContext -> Text -> Text -> IO LogContext
+esLoggingContext cxt user pw
  = do
-    mgr <- newManager defaultManagerSettings
-    let bhe = mkBHEnv (Server "http://localhost:9200") mgr
+    mgr <- newManager tlsManagerSettings
+    let bhe = mkBHEnv (Server "https://61abc218de484ebd8e5b1cb984092716.eu-west-1.aws.found.io:9243") mgr
     esScribe <-
         mkEsScribe
             defaultEsScribeCfgV5
-            bhe
-            (IndexName "all-indices-prefixed-with")
-            (MappingName "application-logs")
+            bhe { bhRequestHook = basicAuthHook (EsUsername user) (EsPassword pw)}
+            (IndexName "katip")
+            (MappingName "hMMMBot-logs")
             DebugS
             V3
     registerScribe "es" esScribe defaultScribeSettings cxt
