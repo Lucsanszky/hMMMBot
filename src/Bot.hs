@@ -23,14 +23,6 @@ import           Data.Aeson
     , toJSON
     )
 import           Data.ByteString.Char8         (pack)
-import qualified Data.HashMap.Strict           as HM
-    ( lookup
-    )
-import qualified Data.HashMap.Strict           as HM
-    ( insert
-    )
-import           Data.Maybe                    (fromJust)
-import qualified Data.Text                     as T (pack)
 import           Data.Time.Clock.POSIX
     ( getPOSIXTime
     )
@@ -42,13 +34,15 @@ import qualified Network.HTTP.Types.Status     as HTTP
     ( Status (..)
     )
 
-_MAX_POSITION_ = 42 :: Int
+_MAX_POSITION_ :: Int
+_MAX_POSITION_ = 42
 
-_ORDER_SIZE_ = 21 :: Int
+_ORDER_SIZE_ :: Int
+_ORDER_SIZE_ = 21
 
 trade :: (Double, Double) -> BitMEXBot IO ()
 trade (bestAsk, bestBid) = do
-    botState@(BotState {..}) <- R.ask
+    BotState {..} <- R.ask
     OB10 (TABLE {_data = orderbookData}) <-
         liftIO $ atomically $ readResponse lobQueue
     let RespOrderBook10 {asks = obAsks, bids = obBids} =
@@ -98,7 +92,6 @@ tradeLoop :: BitMEXBot IO ()
 tradeLoop = do
     config <- BitMEXBot $ R.lift $ R.ask
     botState@(BotState {..}) <- R.ask
-    time <- liftIO $ makeTimestamp <$> getPOSIXTime
     M (TABLE {_data = marginData}) <-
         liftIO $ atomically $ readResponse marginQueue
     OB10 (TABLE {_data = orderbookData}) <-
@@ -108,15 +101,14 @@ tradeLoop = do
         RespOrderBook10 {asks = obAsks, bids = obBids} =
             head orderbookData
     -- Setup placeholder stoploss orders
-    initStopLossOrders time
+    initStopLossOrders
     _ <-
         liftIO $
         forkIO $ forever $ positionTracker botState config
     _ <-
         liftIO $
         forkIO $ forever $ riskManager botState config
-    return ()
-    -- trade (head $ head obAsks, head $ head obBids)
+    trade (head $ head obAsks, head $ head obBids)
 
 initBot :: BitMEXApp IO ()
 initBot conn = do

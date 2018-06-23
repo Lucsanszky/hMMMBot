@@ -3,12 +3,19 @@ module Bot.Concurrent
     , readResponse
     ) where
 
-import           BasicPrelude                  hiding (head)
+import           BasicPrelude
 import           BitMEXClient
+    ( Response (..)
+    )
 import           Bot.Types
+    ( BotState (..)
+    )
 import           Control.Concurrent.STM.TQueue
-import           Control.Monad.STM
-import           Data.Vector                   (head, (!?))
+    ( TQueue
+    , readTQueue
+    , writeTQueue
+    )
+import           Control.Monad.STM             (STM, retry)
 
 processResponse :: BotState -> Maybe Response -> STM ()
 processResponse (BotState {..}) msg = do

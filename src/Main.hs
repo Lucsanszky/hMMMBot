@@ -1,10 +1,19 @@
 module Main where
 
-import           BasicPrelude            hiding (head)
+import           BasicPrelude
 import qualified BitMEX                  as Mex
+    ( runDefaultLogExecWithContext
+    )
 import           BitMEXClient
-import           Bot
+    ( BitMEXWrapperConfig (..)
+    , Environment (..)
+    , connect
+    )
+import           Bot                     (initBot)
 import           Bot.Logging
+    ( esLoggingContext
+    , initEsLogContext
+    )
 import qualified Data.ByteString         as B (readFile)
 import           Network.HTTP.Client     (newManager)
 import           Network.HTTP.Client.TLS
@@ -16,6 +25,7 @@ import qualified System.Environment      as Env (getArgs)
 -- strategyThreshold = 0.5
 -- minPos = -2
 -- maxPos = 2
+
 main :: IO ()
 main = do
     mgr <- newManager tlsManagerSettings
@@ -25,7 +35,8 @@ main = do
     user <- readFile esUserPath
     pw <- readFile esPasswordPath
     logCxt <- initEsLogContext
-    let config0 =
+    let logCxtF = esLoggingContext user pw
+    let config =
             BitMEXWrapperConfig
             { environment = TestNet
             , pathREST = Just "/api/v1"
@@ -36,6 +47,6 @@ main = do
             , logExecContext =
                   Mex.runDefaultLogExecWithContext
             , logContext = logCxt
+            , logContextFunction = logCxtF
             }
-    config <- return config0 >>= withEsLoggingWS user pw
     connect config initBot

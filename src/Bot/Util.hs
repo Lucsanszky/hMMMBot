@@ -13,28 +13,56 @@ module Bot.Util
 
 import           BasicPrelude                hiding (head)
 import qualified BitMEX                      as Mex
+    ( Accept (..)
+    , BitMEXRequest (..)
+    , ContentType (..)
+    , MimeError (..)
+    , MimeJSON (..)
+    , MimeResult (..)
+    , Order (..)
+    , Symbol (..)
+    , mkOrder
+    , orderAmend
+    , orderAmendBulk
+    , orderNew
+    , orderNewBulk
+    , _setBodyLBS
+    )
 import           BitMEXClient
-import           Bot.Concurrent
-import           Bot.Math
+    ( BitMEXReader (..)
+    , BitMEXWrapperConfig
+    , ContingencyType
+    , ExecutionInstruction (..)
+    , OrderType
+    , OrderType (..)
+    , RespPosition (..)
+    , Response (..)
+    , Side (..)
+    , Symbol (..)
+    , TABLE (..)
+    , makeRequest
+    )
+import           Bot.Concurrent              (readResponse)
+import           Bot.Math                    (roundPrice)
 import           Bot.Types
+    ( BitMEXBot (..)
+    , BotState (..)
+    )
 import           Control.Concurrent.STM.TVar
+    ( readTVar
+    , writeTVar
+    )
 import qualified Control.Monad.Reader        as R
     ( asks
     , runReaderT
     )
-import           Control.Monad.STM
-import           Data.Aeson
-    ( Value (String)
-    , encode
-    , toJSON
-    )
+import           Control.Monad.STM           (atomically)
+import           Data.Aeson                  (encode)
 import qualified Data.HashMap.Strict         as HM
     ( insert
     , lookup
     )
-import           Data.Maybe                  (fromJust)
 import qualified Data.Text                   as T (pack)
-import           Data.Time.Clock.POSIX       (getPOSIXTime)
 import           Data.Vector                 (head)
 
 -------------------------------------------------------------
@@ -84,8 +112,8 @@ prepareOrder ordId clientId linkId orderType side price stopPx orderQty executio
                   fmap (T.pack . show) contingencyType
             }
     case ordId of
-        Nothing -> order
-        Just id -> order {Mex.orderOrderId = id}
+        Nothing  -> order
+        Just oid -> order {Mex.orderOrderId = oid}
 
 placeOrder ::
        Mex.Order -> BitMEXBot IO (Mex.MimeResult Mex.Order)
@@ -138,17 +166,17 @@ bulkAmendOrders orders = do
     BitMEXBot . lift $ makeRequest orderRequest
 
 insertStopLossOrder :: Text -> Text -> BitMEXBot IO ()
-insertStopLossOrder id stopLossType = do
+insertStopLossOrder oid stopLossType = do
     stopMap <- R.asks stopLossMap
     slm <-
         R.asks stopLossMap >>=
         (liftIO . atomically . readTVar)
     liftIO $
         atomically $
-        writeTVar stopMap $ HM.insert stopLossType id slm
+        writeTVar stopMap $ HM.insert stopLossType oid slm
 
-initStopLossOrders :: Int -> BitMEXBot IO ()
-initStopLossOrders time = do
+initStopLossOrders :: BitMEXBot IO ()
+initStopLossOrders = do
     let stopLossBuy =
             prepareOrder
                 Nothing
@@ -203,7 +231,6 @@ manageRisk :: Double -> Maybe Double -> BitMEXBot IO ()
 manageRisk _ Nothing = return ()
 manageRisk cumQty (Just avgCostPrice)
     | cumQty > 0 = do
-        time <- liftIO $ makeTimestamp <$> getPOSIXTime
         slm <-
             R.asks stopLossMap >>=
             (liftIO . atomically . readTVar)
@@ -221,10 +248,9 @@ manageRisk cumQty (Just avgCostPrice)
                     (Just cumQty)
                     Nothing
                     Nothing
-        res <- bulkAmendOrders [stopLossBuy]
+        _ <- bulkAmendOrders [stopLossBuy]
         return ()
     | cumQty < 0 = do
-        time <- liftIO $ makeTimestamp <$> getPOSIXTime
         slm <-
             R.asks stopLossMap >>=
             (liftIO . atomically . readTVar)
@@ -244,7 +270,7 @@ manageRisk cumQty (Just avgCostPrice)
                     (Just cumQty)
                     Nothing
                     Nothing
-        res <- bulkAmendOrders [stopLossSell]
+        _ <- bulkAmendOrders [stopLossSell]
         return ()
     | otherwise = return ()
 
@@ -297,7 +323,6 @@ makeMarket ::
     -> Double
     -> BitMEXBot IO (Mex.MimeResult [Mex.Order])
 makeMarket ask bid = do
-    time <- liftIO $ makeTimestamp <$> getPOSIXTime
     let buyOrder =
             prepareOrder
                 Nothing

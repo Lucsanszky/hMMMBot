@@ -5,8 +5,11 @@ module Bot.Types
 
 import           BasicPrelude
 import           BitMEXClient
-import           Control.Concurrent.STM.TQueue
-import           Control.Concurrent.STM.TVar
+    ( BitMEXReader
+    , Response
+    )
+import           Control.Concurrent.STM.TQueue (TQueue)
+import           Control.Concurrent.STM.TVar   (TVar)
 import           Control.Monad.Reader
     ( MonadReader
     , ReaderT
