@@ -315,7 +315,7 @@ manageRisk execQty Nothing
     | execQty < 0 = do
         updatePositionsAndAmend
             "SHORT_POSITION_STOP_LOSS"
-            execQty
+            (abs execQty)
             Nothing
     | otherwise = return ()
 manageRisk _ Nothing = return ()
@@ -326,14 +326,14 @@ manageRisk execQty (Just avgCostPrice)
         updatePositionsAndAmend
             "LONG_POSITION_STOP_LOSS"
             execQty
-            (Just (roundPrice $ avgCostPrice * 0.95))
+            (Just (roundPrice $ avgCostPrice * 0.9925))
     | execQty < 0
           -- TODO: get rid of (Just avgCostPrice) with better pattern matching
      = do
         updatePositionsAndAmend
             "SHORT_POSITION_STOP_LOSS"
-            execQty
-            (Just (roundPrice $ avgCostPrice * 1.05))
+            (abs execQty)
+            (Just (roundPrice $ avgCostPrice * 1.0075))
     | otherwise = return ()
 
 riskManager :: BotState -> BitMEXWrapperConfig -> IO ()
