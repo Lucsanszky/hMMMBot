@@ -64,6 +64,12 @@ import qualified Data.HashMap.Strict         as HM
     )
 import qualified Data.Text                   as T (pack)
 import           Data.Vector                 (head)
+import           Network.HTTP.Client
+    ( responseStatus
+    )
+import qualified Network.HTTP.Types.Status   as HTTP
+    ( Status (..)
+    )
 
 -------------------------------------------------------------
 -- GENERAL
@@ -165,15 +171,17 @@ bulkAmendOrders orders = do
             "{\"orders\": " <> encode orders <> "}"
     BitMEXBot . lift $ makeRequest orderRequest
 
-insertStopLossOrder :: Text -> Text -> BitMEXBot IO ()
-insertStopLossOrder oid stopLossType = do
+insertStopLossOrder ::
+       (Text, Double) -> Text -> BitMEXBot IO ()
+insertStopLossOrder (oid, qty) stopLossType = do
     stopMap <- R.asks stopLossMap
     slm <-
         R.asks stopLossMap >>=
         (liftIO . atomically . readTVar)
     liftIO $
         atomically $
-        writeTVar stopMap $ HM.insert stopLossType oid slm
+        writeTVar stopMap $
+        HM.insert stopLossType (oid, qty) slm
 
 initStopLossOrders :: BitMEXBot IO ()
 initStopLossOrders = do
@@ -209,6 +217,7 @@ initStopLossOrders = do
             mapM_
                 (\Mex.Order { orderOrderId = oid
                             , orderSide = oside
+                            , orderOrderQty = Just qty
                             } ->
                      case oside of
                          Nothing ->
@@ -217,61 +226,111 @@ initStopLossOrders = do
                          Just s ->
                              if s == "Buy"
                                  then insertStopLossOrder
-                                          oid
+                                          (oid, qty)
                                           "SHORT_POSITION_STOP_LOSS"
                                  else insertStopLossOrder
-                                          oid
+                                          (oid, qty)
                                           "LONG_POSITION_STOP_LOSS")
                 orders
 
 -------------------------------------------------------------
 -- RISK MANAGER
 -------------------------------------------------------------
+-- TODO: investigate whether the price can change while qty remains the same
+updatePositionsAndAmend ::
+       Text -> Double -> Maybe Double -> BitMEXBot IO ()
+updatePositionsAndAmend stopLoss execQty avgCostPrice = do
+    slm <-
+        R.asks stopLossMap >>=
+        (liftIO . atomically . readTVar)
+    let (Just (oid, size)) = HM.lookup stopLoss slm
+        (side, f, placeholder) =
+            if stopLoss == "LONG_POSITION_STOP_LOSS"
+                then (Sell, (+ 1), stopLossShort slm)
+                else (Buy, (flip (-) 1), stopLossLong slm)
+    if execQty == size
+        then return ()
+        else do
+            let newStopLoss =
+                    prepareOrder
+                        (Just oid)
+                        Nothing
+                        Nothing
+                        Nothing
+                        (Just side)
+                        avgCostPrice
+                        (fmap f avgCostPrice)
+                        (Just execQty)
+                        Nothing
+                        Nothing
+            Mex.MimeResult {Mex.mimeResultResponse = resp} <-
+                bulkAmendOrders [newStopLoss, placeholder]
+            let HTTP.Status {statusCode = code} =
+                    responseStatus resp
+            if code == 200
+                then insertStopLossOrder
+                         (oid, execQty)
+                         stopLoss
+                else fail "amending failed"
+  where
+    stopLossLong slm =
+        prepareOrder
+            (fmap
+                 fst
+                 (HM.lookup "LONG_POSITION_STOP_LOSS" slm))
+            Nothing
+            Nothing
+            (Just StopLimit)
+            (Just Sell)
+            (Just 0.5)
+            (Just 1)
+            (Just 1)
+            (Just LastPrice)
+            Nothing
+    stopLossShort slm =
+        prepareOrder
+            (fmap
+                 fst
+                 (HM.lookup "SHORT_POSITION_STOP_LOSS" slm))
+            Nothing
+            Nothing
+            (Just StopLimit)
+            (Just Buy)
+            (Just 1000000)
+            (Just 99999)
+            (Just 1)
+            (Just LastPrice)
+            Nothing
+
 manageRisk :: Double -> Maybe Double -> BitMEXBot IO ()
+manageRisk execQty Nothing
+    | execQty > 0 = do
+        updatePositionsAndAmend
+            "LONG_POSITION_STOP_LOSS"
+            execQty
+            Nothing
+    | execQty < 0 = do
+        updatePositionsAndAmend
+            "SHORT_POSITION_STOP_LOSS"
+            execQty
+            Nothing
+    | otherwise = return ()
 manageRisk _ Nothing = return ()
-manageRisk cumQty (Just avgCostPrice)
-    | cumQty > 0 = do
-        slm <-
-            R.asks stopLossMap >>=
-            (liftIO . atomically . readTVar)
-        let stopLossBuy =
-                prepareOrder
-                    (HM.lookup "LONG_POSITION_STOP_LOSS" slm)
-                    Nothing
-                    Nothing
-                    Nothing
-                    (Just Sell)
-                    (Just (roundPrice $ avgCostPrice * 0.95))
-                    (Just
-                         (roundPrice $
-                          avgCostPrice * 0.95 + 1))
-                    (Just cumQty)
-                    Nothing
-                    Nothing
-        _ <- bulkAmendOrders [stopLossBuy]
-        return ()
-    | cumQty < 0 = do
-        slm <-
-            R.asks stopLossMap >>=
-            (liftIO . atomically . readTVar)
-        let stopLossSell =
-                prepareOrder
-                    (HM.lookup
-                         "SHORT_POSITION_STOP_LOSS"
-                         slm)
-                    Nothing
-                    Nothing
-                    Nothing
-                    (Just Buy)
-                    (Just (roundPrice $ avgCostPrice * 1.05))
-                    (Just
-                         (roundPrice $
-                          avgCostPrice * 1.05 - 1))
-                    (Just (abs cumQty))
-                    Nothing
-                    Nothing
-        _ <- bulkAmendOrders [stopLossSell]
-        return ()
+manageRisk execQty (Just avgCostPrice)
+    | execQty > 0
+          -- TODO: get rid of (Just avgCostPrice) with better pattern matching
+     = do
+        updatePositionsAndAmend
+            "LONG_POSITION_STOP_LOSS"
+            execQty
+            (Just (roundPrice $ avgCostPrice * 0.95))
+    | execQty < 0
+          -- TODO: get rid of (Just avgCostPrice) with better pattern matching
+     = do
+        updatePositionsAndAmend
+            "SHORT_POSITION_STOP_LOSS"
+            execQty
+            (Just (roundPrice $ avgCostPrice * 1.05))
     | otherwise = return ()
 
 riskManager :: BotState -> BitMEXWrapperConfig -> IO ()
@@ -279,7 +338,7 @@ riskManager botState@BotState {..} config = do
     resp <- atomically $ readResponse positionQueue
     case resp of
         P (TABLE {_data = positionData}) -> do
-            let RespPosition { currentQty = qty
+            let RespPosition { execQty = qty
                              , avgCostPrice = avgPrice
                              } = head positionData
             case qty of

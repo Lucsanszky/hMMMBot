@@ -25,7 +25,7 @@ data BotState = BotState
     , executionQueue :: !(TQueue (Maybe Response))
     , messageQueue   :: !(TQueue (Maybe Response))
     , positionSize   :: !(TVar Int)
-    , stopLossMap    :: !(TVar (HashMap Text Text))
+    , stopLossMap    :: !(TVar (HashMap Text (Text, Double)))
     }
 
 newtype BitMEXBot m a = BitMEXBot

@@ -125,7 +125,7 @@ initBot conn = do
     positionSize <- liftIO $ atomically $ newTVar 0
     stopLossMap <-
         liftIO $
-        atomically $ newTVar (mempty :: HashMap Text Text)
+        atomically $ newTVar (mempty :: HashMap Text (Text, Double))
     let botState =
             BotState
             { connection = conn
