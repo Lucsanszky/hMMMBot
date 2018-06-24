@@ -267,7 +267,7 @@ manageRisk cumQty (Just avgCostPrice)
                     (Just
                          (roundPrice $
                           avgCostPrice * 1.05 - 1))
-                    (Just cumQty)
+                    (Just (abs cumQty))
                     Nothing
                     Nothing
         _ <- bulkAmendOrders [stopLossSell]
