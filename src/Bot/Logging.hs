@@ -45,6 +45,6 @@ esLoggingContext user pw cxt
             bhe { bhRequestHook = basicAuthHook (EsUsername user) (EsPassword pw)}
             (IndexName "katip")
             (MappingName "hMMMBot-logs")
-            InfoS
-            V2
+            DebugS
+            V3
     registerScribe "es" esScribe defaultScribeSettings cxt
