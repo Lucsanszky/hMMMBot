@@ -8,6 +8,7 @@ module Bot.Util
     , bulkAmendOrders
     , positionTracker
     , riskManager
+    , stopLossWatcher
     , unWrapBotWith
     ) where
 
@@ -24,6 +25,7 @@ import qualified BitMEX                      as Mex
     , mkOrder
     , orderAmend
     , orderAmendBulk
+    , orderCancelAll
     , orderNew
     , orderNewBulk
     , _setBodyLBS
@@ -35,6 +37,7 @@ import           BitMEXClient
     , ExecutionInstruction (..)
     , OrderType
     , OrderType (..)
+    , RespOrder (..)
     , RespPosition (..)
     , Response (..)
     , Side (..)
@@ -63,7 +66,7 @@ import qualified Data.HashMap.Strict         as HM
     , lookup
     )
 import qualified Data.Text                   as T (pack)
-import           Data.Vector                 (head)
+import           Data.Vector                 (head, (!?))
 import           Network.HTTP.Client
     ( responseStatus
     )
@@ -349,6 +352,34 @@ riskManager botState@BotState {..} config = do
                         botState
                         config
         _ -> return ()
+
+stopLossWatcher :: BotState -> BitMEXWrapperConfig -> IO ()
+stopLossWatcher botState@BotState {..} config = do
+    resp <- atomically $ readResponse orderQueue
+    case resp of
+        O (TABLE {_data = orderData}) -> do
+            case orderData !? 0 of
+                Nothing -> return ()
+                Just (RespOrder {triggered = text}) ->
+                    case text of
+                        Nothing -> return ()
+                        Just t -> do
+                            if t == "StopOrderTriggered"
+                                then unWrapBotWith
+                                         restart
+                                         botState
+                                         config
+                                else return ()
+        _ -> return ()
+
+restart :: BitMEXBot IO ()
+restart =
+    (BitMEXBot . lift $
+     makeRequest
+         (Mex.orderCancelAll
+              (Mex.ContentType Mex.MimeJSON)
+              (Mex.Accept Mex.MimeJSON))) >>= \_ ->
+        initStopLossOrders
 
 -------------------------------------------------------------
 -- POSITION TRACKER
