@@ -36,6 +36,7 @@ import           BitMEXClient
     , ExecutionInstruction (..)
     , OrderType
     , OrderType (..)
+    , RespExecution (..)
     , RespOrder (..)
     , RespPosition (..)
     , Response (..)
@@ -419,21 +420,25 @@ riskManager botState@BotState {..} config = do
 
 stopLossWatcher :: BotState -> BitMEXWrapperConfig -> IO ()
 stopLossWatcher botState@BotState {..} config = do
-    resp <- atomically $ readResponse orderQueue
+    resp <- atomically $ readResponse executionQueue
     case resp of
-        O (TABLE {_data = orderData}) -> do
-            case orderData !? 0 of
+        Exe (TABLE {_data = execData}) -> do
+            case execData !? 0 of
                 Nothing -> return ()
-                Just (RespOrder {triggered = text}) ->
-                    case text of
-                        Nothing -> return ()
-                        Just t -> do
-                            if t == "StopOrderTriggered"
-                                then unWrapBotWith
-                                         restart
-                                         botState
-                                         config
-                                else return ()
+                Just (RespExecution { triggered = text
+                                    , ordStatus = stat
+                                    }) ->
+                    case liftM2
+                             (&&)
+                             (map (== "StopOrderTriggered")
+                                  text)
+                             (map (== "Filled") stat) of
+                        Just True ->
+                            unWrapBotWith
+                                restart
+                                botState
+                                config
+                        _ -> return ()
         _ -> return ()
 
 restart :: BitMEXBot IO ()
