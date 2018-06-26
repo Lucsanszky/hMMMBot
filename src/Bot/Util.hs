@@ -109,15 +109,15 @@ prepareOrder ordId clientId linkId orderType side price stopPx orderQty executio
             , Mex.orderClOrdId = clientId
             , Mex.orderClOrdLinkId = linkId
             , Mex.orderOrdType =
-                  fmap (T.pack . show) orderType
-            , Mex.orderSide = fmap (T.pack . show) side
+                  map (T.pack . show) orderType
+            , Mex.orderSide = map (T.pack . show) side
             , Mex.orderPrice = price
             , Mex.orderStopPx = stopPx
             , Mex.orderOrderQty = orderQty
             , Mex.orderExecInst =
-                  fmap (T.pack . show) executionType
+                  map (T.pack . show) executionType
             , Mex.orderContingencyType =
-                  fmap (T.pack . show) contingencyType
+                  map (T.pack . show) contingencyType
             }
     case ordId of
         Nothing  -> order
@@ -261,7 +261,7 @@ updatePositionsAndAmend stopLoss currQty avgCostPrice = do
                         Nothing
                         Nothing
                         avgCostPrice
-                        (fmap f avgCostPrice)
+                        (map f avgCostPrice)
                         (Just currQty)
                         Nothing
                         Nothing
@@ -277,7 +277,7 @@ updatePositionsAndAmend stopLoss currQty avgCostPrice = do
   where
     stopLossLong slm =
         prepareOrder
-            (fmap
+            (map
                  fst
                  (HM.lookup "LONG_POSITION_STOP_LOSS" slm))
             Nothing
@@ -291,7 +291,7 @@ updatePositionsAndAmend stopLoss currQty avgCostPrice = do
             Nothing
     stopLossShort slm =
         prepareOrder
-            (fmap
+            (map
                  fst
                  (HM.lookup "SHORT_POSITION_STOP_LOSS" slm))
             Nothing
