@@ -6,7 +6,6 @@ module Bot.Util
     , amendOrder
     , initStopLossOrders
     , bulkAmendOrders
-    , positionTracker
     , riskManager
     , stopLossWatcher
     , unWrapBotWith
@@ -163,8 +162,8 @@ amendOrder order = do
 bulkAmendOrders ::
        [Mex.Order]
     -> BitMEXBot IO (Mex.MimeResult [Mex.Order])
-bulkAmendOrders orders = do
-    print orders
+bulkAmendOrders orders
+ = do
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderAmendBulk
                 (Mex.ContentType Mex.MimeJSON)
@@ -242,7 +241,7 @@ initStopLossOrders = do
 -- TODO: investigate whether the price can change while qty remains the same
 updatePositionsAndAmend ::
        Text -> Double -> Maybe Double -> BitMEXBot IO ()
-updatePositionsAndAmend stopLoss execQty avgCostPrice = do
+updatePositionsAndAmend stopLoss currQty avgCostPrice = do
     slm <-
         R.asks stopLossMap >>=
         (liftIO . atomically . readTVar)
@@ -251,7 +250,7 @@ updatePositionsAndAmend stopLoss execQty avgCostPrice = do
             if stopLoss == "LONG_POSITION_STOP_LOSS"
                 then (Sell, (+ 1), stopLossShort slm)
                 else (Buy, (flip (-) 1), stopLossLong slm)
-    if execQty == size
+    if currQty == size
         then return ()
         else do
             let newStopLoss =
@@ -260,20 +259,20 @@ updatePositionsAndAmend stopLoss execQty avgCostPrice = do
                         Nothing
                         Nothing
                         Nothing
-                        (Just side)
+                        Nothing
                         avgCostPrice
                         (fmap f avgCostPrice)
-                        (Just execQty)
+                        (Just currQty)
                         Nothing
                         Nothing
+            insertStopLossOrder (oid, currQty) stopLoss
+            updatePositionSize currQty
             Mex.MimeResult {Mex.mimeResultResponse = resp} <-
                 bulkAmendOrders [newStopLoss, placeholder]
             let HTTP.Status {statusCode = code} =
                     responseStatus resp
             if code == 200
-                then insertStopLossOrder
-                         (oid, execQty)
-                         stopLoss
+                then return ()
                 else fail "amending failed"
   where
     stopLossLong slm =
@@ -283,12 +282,12 @@ updatePositionsAndAmend stopLoss execQty avgCostPrice = do
                  (HM.lookup "LONG_POSITION_STOP_LOSS" slm))
             Nothing
             Nothing
-            (Just StopLimit)
-            (Just Sell)
+            Nothing
+            Nothing
             (Just 0.5)
             (Just 1)
             (Just 1)
-            (Just LastPrice)
+            Nothing
             Nothing
     stopLossShort slm =
         prepareOrder
@@ -297,44 +296,44 @@ updatePositionsAndAmend stopLoss execQty avgCostPrice = do
                  (HM.lookup "SHORT_POSITION_STOP_LOSS" slm))
             Nothing
             Nothing
-            (Just StopLimit)
+            Nothing
             (Just Buy)
             (Just 1000000)
             (Just 99999)
             (Just 1)
-            (Just LastPrice)
+            Nothing
             Nothing
 
 manageRisk :: Double -> Maybe Double -> BitMEXBot IO ()
-manageRisk execQty Nothing
-    | execQty > 0 = do
+manageRisk currQty Nothing
+    | currQty > 0 =
         updatePositionsAndAmend
             "LONG_POSITION_STOP_LOSS"
-            execQty
+            currQty
             Nothing
-    | execQty < 0 = do
+    | currQty < 0 =
         updatePositionsAndAmend
             "SHORT_POSITION_STOP_LOSS"
-            (abs execQty)
+            (abs currQty)
             Nothing
     | otherwise = return ()
-manageRisk _ Nothing = return ()
-manageRisk execQty (Just avgCostPrice)
-    | execQty > 0
+manageRisk currQty (Just avgCostPrice)
+    | currQty > 0
           -- TODO: get rid of (Just avgCostPrice) with better pattern matching
-     = do
+     =
         updatePositionsAndAmend
             "LONG_POSITION_STOP_LOSS"
-            execQty
+            currQty
             (Just (roundPrice $ avgCostPrice * 0.9925))
-    | execQty < 0
+    | currQty < 0
           -- TODO: get rid of (Just avgCostPrice) with better pattern matching
-     = do
+     =
         updatePositionsAndAmend
             "SHORT_POSITION_STOP_LOSS"
-            (abs execQty)
+            (abs currQty)
             (Just (roundPrice $ avgCostPrice * 1.0075))
     | otherwise = return ()
+manageRisk _ Nothing = return ()
 
 riskManager :: BotState -> BitMEXWrapperConfig -> IO ()
 riskManager botState@BotState {..} config = do
@@ -342,16 +341,27 @@ riskManager botState@BotState {..} config = do
     case resp of
         P (TABLE {_data = positionData}) -> do
             let RespPosition { execQty = qty
+                             , currentQty = currQty
                              , avgCostPrice = avgPrice
                              } = head positionData
-            case qty of
-                Nothing -> return ()
-                Just q ->
+            -- asshole way to check if both values are "Just"
+            -- while keeping the second value
+            case qty >> currQty of
+                Nothing -> do
+                    case currQty of
+                        Nothing -> return ()
+                        Just cq ->
+                            unWrapBotWith
+                                (updatePositionSize cq)
+                                botState
+                                config
+                Just q -> do
                     unWrapBotWith
                         (manageRisk q avgPrice)
                         botState
                         config
-        _ -> return ()
+        _ -> do
+            return ()
 
 stopLossWatcher :: BotState -> BitMEXWrapperConfig -> IO ()
 stopLossWatcher botState@BotState {..} config = do
@@ -388,22 +398,6 @@ updatePositionSize :: Double -> BitMEXBot IO ()
 updatePositionSize x =
     R.asks positionSize >>= \p ->
         (liftIO . atomically) $ writeTVar p (floor x)
-
-positionTracker :: BotState -> BitMEXWrapperConfig -> IO ()
-positionTracker botState@BotState {..} config = do
-    resp <- atomically $ readResponse positionQueue
-    case resp of
-        P (TABLE {_data = positionData}) -> do
-            let RespPosition {currentQty = qty} =
-                    head positionData
-            case qty of
-                Nothing -> return ()
-                Just q -> do
-                    unWrapBotWith
-                        (updatePositionSize q)
-                        botState
-                        config
-        _ -> return ()
 
 -------------------------------------------------------------
 -- MARKET MAKING

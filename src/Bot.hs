@@ -104,9 +104,6 @@ tradeLoop = do
     initStopLossOrders
     _ <-
         liftIO $
-        forkIO $ forever $ positionTracker botState config
-    _ <-
-        liftIO $
         forkIO $ forever $ riskManager botState config
     _ <-
         liftIO $
