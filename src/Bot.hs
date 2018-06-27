@@ -6,6 +6,7 @@ import           BasicPrelude                  hiding (head)
 import qualified BitMEX                        as Mex
 import           BitMEXClient
 import           Bot.Concurrent
+import           Bot.RiskManager
 import           Bot.Types
 import           Bot.Util
 import           Control.Concurrent            (forkIO)
