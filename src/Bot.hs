@@ -51,43 +51,22 @@ trade (bestAsk, bestBid) = do
         newBestAsk = head $ head obAsks
         newBestBid = head $ head obBids
     size <- liftIO $ atomically $ readTVar positionSize
-    case newBestAsk /= bestAsk of
-        False ->
-            case newBestBid /= bestBid of
-                False -> do
-                    trade (bestAsk, bestBid)
-                True -> do
-                    if (_MAX_POSITION_ - (abs size) -
-                        _ORDER_SIZE_ >=
-                        0)
-                        then do
-                            Mex.MimeResult {Mex.mimeResultResponse = resp} <-
-                                makeMarket
-                                    bestAsk
-                                    newBestBid
-                            let HTTP.Status {statusCode = code} =
-                                    responseStatus resp
-                            if code == 200
-                                then trade
-                                         ( bestAsk
-                                         , newBestBid)
-                                else fail
-                                         "order didn't go through"
-                        else do
-                            trade (bestAsk, newBestBid)
+    case newBestAsk /= bestAsk || newBestBid /= bestBid of
+        False -> do
+            trade (bestAsk, bestBid)
         True -> do
             if (_MAX_POSITION_ - (abs size) - _ORDER_SIZE_ >=
                 0)
                 then do
                     Mex.MimeResult {Mex.mimeResultResponse = resp} <-
-                        makeMarket newBestAsk bestBid
+                        makeMarket newBestAsk newBestBid
                     let HTTP.Status {statusCode = code} =
                             responseStatus resp
                     if code == 200
-                        then trade (newBestAsk, bestBid)
+                        then trade (newBestAsk, newBestBid)
                         else fail "order didn't go through"
                 else do
-                    trade (newBestAsk, bestBid)
+                    trade (newBestAsk, newBestBid)
 
 tradeLoop :: BitMEXBot IO ()
 tradeLoop = do
@@ -109,7 +88,6 @@ tradeLoop = do
     _ <-
         liftIO $
         forkIO $ forever $ stopLossWatcher botState config
-
     trade (head $ head obAsks, head $ head obBids)
 
 initBot :: BitMEXApp IO ()
@@ -127,7 +105,8 @@ initBot conn = do
     positionSize <- liftIO $ atomically $ newTVar 0
     stopLossMap <-
         liftIO $
-        atomically $ newTVar (mempty :: HashMap Text (Text, Double))
+        atomically $
+        newTVar (mempty :: HashMap Text (Text, Double))
     let botState =
             BotState
             { connection = conn
