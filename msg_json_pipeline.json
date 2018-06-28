@@ -1,0 +1,19 @@
+{
+  "msg_json": {
+    "description": "convert the msg field to json",
+    "processors": [
+      {
+        "script": {
+          "source": "ctx.raw_json_msg = ctx.msg.substring(0,1) == '{' ? ctx.msg : ('{\"REST\":\"' + ctx.msg + '\"}')"
+        }
+      },
+      {
+        "json": {
+          "field": "raw_json_msg",
+          "target_field": "parsed_json_msg",
+          "ignore_failure": true
+        }
+      }
+    ]
+  }
+}
