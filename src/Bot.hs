@@ -107,6 +107,7 @@ initBot conn = do
         liftIO $
         atomically $
         newTVar (mempty :: HashMap Text (Text, Double))
+    stopLossTriggered <- liftIO $ atomically $ newTVar False
     let botState =
             BotState
             { connection = conn
@@ -118,6 +119,7 @@ initBot conn = do
             , messageQueue = messageQueue
             , positionSize = positionSize
             , stopLossMap = stopLossMap
+            , stopLossTriggered = stopLossTriggered
             }
     liftIO $ do
         sendMessage

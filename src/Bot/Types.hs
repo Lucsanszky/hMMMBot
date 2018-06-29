@@ -17,15 +17,16 @@ import           Control.Monad.Reader
 import           Network.WebSockets            (Connection)
 
 data BotState = BotState
-    { connection     :: !Connection
-    , positionQueue  :: !(TQueue (Maybe Response))
-    , lobQueue       :: !(TQueue (Maybe Response))
-    , orderQueue     :: !(TQueue (Maybe Response))
-    , marginQueue    :: !(TQueue (Maybe Response))
-    , executionQueue :: !(TQueue (Maybe Response))
-    , messageQueue   :: !(TQueue (Maybe Response))
-    , positionSize   :: !(TVar Int)
-    , stopLossMap    :: !(TVar (HashMap Text (Text, Double)))
+    { connection        :: !Connection
+    , positionQueue     :: !(TQueue (Maybe Response))
+    , lobQueue          :: !(TQueue (Maybe Response))
+    , orderQueue        :: !(TQueue (Maybe Response))
+    , marginQueue       :: !(TQueue (Maybe Response))
+    , executionQueue    :: !(TQueue (Maybe Response))
+    , messageQueue      :: !(TQueue (Maybe Response))
+    , positionSize      :: !(TVar Int)
+    , stopLossMap       :: !(TVar (HashMap Text (Text, Double)))
+    , stopLossTriggered :: !(TVar Bool)
     }
 
 newtype BitMEXBot m a = BitMEXBot

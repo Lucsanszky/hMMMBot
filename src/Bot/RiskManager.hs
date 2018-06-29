@@ -34,7 +34,8 @@ import           Bot.Util
     , unWrapBotWith
     )
 import           Control.Concurrent.STM.TVar
-    ( readTVar
+    ( TVar
+    , readTVar
     , writeTVar
     )
 import qualified Control.Monad.Reader        as R (asks)
@@ -56,14 +57,15 @@ updatePositionsAndAmend stopLoss currQty avgCostPrice = do
     slm <-
         R.asks stopLossMap >>=
         (liftIO . atomically . readTVar)
+    triggered <- R.asks stopLossTriggered >>= (liftIO . atomically . readTVar)
     if null slm
         then return ()
         else do
             let (Just (oid, size)) = HM.lookup stopLoss slm
                 (f, placeholder) =
                     if stopLoss == "LONG_POSITION_STOP_LOSS"
-                        then ((+ 0.5), stopLossShort slm)
-                        else ( (flip (-) 0.5)
+                        then ((+ 1.5), stopLossShort slm)
+                        else ( (flip (-) 1.5)
                              , stopLossLong slm)
             if currQty == size
                 then return ()
@@ -76,7 +78,9 @@ updatePositionsAndAmend stopLoss currQty avgCostPrice = do
                                 Nothing
                                 Nothing
                                 avgCostPrice
-                                (map f avgCostPrice)
+                                (if triggered
+                                    then Nothing
+                                    else (map f avgCostPrice))
                                 (Just currQty)
                                 Nothing
                                 Nothing
@@ -147,7 +151,7 @@ resetStopLoss = do
                     prepareOrder
                         (map fst
                              (HM.lookup
-                                  "SHORT_POSITION_STOP_LOSS"
+                                 "SHORT_POSITION_STOP_LOSS"
                                   slm))
                         Nothing
                         Nothing
@@ -226,6 +230,9 @@ riskManager botState@BotState {..} config = do
         _ -> do
             return ()
 
+toggleStopLoss :: TVar Bool -> IO ()
+toggleStopLoss t = atomically $ (writeTVar t True)
+
 stopLossWatcher :: BotState -> BitMEXWrapperConfig -> IO ()
 stopLossWatcher botState@BotState {..} config = do
     resp <- atomically $ readResponse executionQueue
@@ -236,16 +243,10 @@ stopLossWatcher botState@BotState {..} config = do
                 Just (RespExecution { triggered = text
                                     , ordStatus = stat
                                     }) ->
-                    case liftM2
-                             (&&)
-                             (map (== "StopOrderTriggered")
-                                  text)
-                             (map (== "Filled") stat) of
-                        Just True ->
-                            unWrapBotWith
-                                restart
-                                botState
-                                config
+                    case text of
+                        Just "StopOrderTriggered" -> case stat of
+                            Just "Filled" -> unWrapBotWith restart botState config
+                            _ -> toggleStopLoss stopLossTriggered
                         _ -> return ()
         _ -> return ()
 
