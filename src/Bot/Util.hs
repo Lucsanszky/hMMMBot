@@ -4,6 +4,7 @@ module Bot.Util
     , placeBulkOrder
     , placeOrder
     , amendOrder
+    , cancelOrders
     , initStopLossOrders
     , insertStopLossOrder
     , bulkAmendOrders
@@ -23,6 +24,7 @@ import qualified BitMEX                      as Mex
     , mkOrder
     , orderAmend
     , orderAmendBulk
+    , orderCancel
     , orderNew
     , orderNewBulk
     , _setBodyLBS
@@ -82,6 +84,19 @@ placeOrder order = do
                 (Mex.Symbol ((T.pack . show) XBTUSD))
         orderRequest =
             Mex._setBodyLBS orderTemplate $ encode order
+    BitMEXBot . lift $ makeRequest orderRequest
+
+cancelOrders ::
+       [Mex.Order]
+    -> BitMEXBot IO (Mex.MimeResult [Mex.Order])
+cancelOrders orders = do
+    let orderTemplate@(Mex.BitMEXRequest {..}) =
+            Mex.orderCancel
+                (Mex.ContentType Mex.MimeJSON)
+                (Mex.Accept Mex.MimeJSON)
+        orderRequest =
+            Mex._setBodyLBS orderTemplate $
+            "{\"orders\": " <> encode orders <> "}"
     BitMEXBot . lift $ makeRequest orderRequest
 
 placeBulkOrder ::

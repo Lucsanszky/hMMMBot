@@ -29,6 +29,7 @@ import           Bot.OrderTemplates
 import           Bot.Types
 import           Bot.Util
     ( bulkAmendOrders
+    , cancelOrders
     , initStopLossOrders
     , insertStopLossOrder
     , prepareOrder
@@ -58,24 +59,16 @@ updatePositionsAndAmend stopLoss currQty avgCostPrice = do
     slm <-
         R.asks stopLossMap >>=
         (liftIO . atomically . readTVar)
-    trigger <-
-        R.asks stopLossTriggered >>=
-        (liftIO . atomically . readTVar)
     if null slm
         then return ()
         else do
             let (Just (oid, size)) = HM.lookup stopLoss slm
                 (stopPx, placeholder) =
                     if stopLoss == "LONG_POSITION_STOP_LOSS"
-                        then ( if trigger /= Long
-                                   then map (+ 1.5)
-                                            avgCostPrice
-                                   else Nothing
+                        then ( map (+ 1.5) avgCostPrice
                              , stopLossShort slm)
-                        else ( if trigger /= Short
-                                   then map (flip (-) 1.5)
-                                            avgCostPrice
-                                   else Nothing
+                        else ( map (flip (-) 1.5)
+                                   avgCostPrice
                              , stopLossLong slm)
             if currQty == size
                 then return ()
@@ -93,13 +86,8 @@ updatePositionsAndAmend stopLoss currQty avgCostPrice = do
                         stopLoss
                     updatePositionSize currQty
                     Mex.MimeResult {Mex.mimeResultResponse = resp} <-
-                        if trigger == None
-                            then bulkAmendOrders
-                                     [ newStopLoss
-                                     , placeholder
-                                     ]
-                            else bulkAmendOrders
-                                     [newStopLoss]
+                        bulkAmendOrders
+                            [newStopLoss, placeholder]
                     let HTTP.Status {statusCode = code} =
                             responseStatus resp
                     if code == 200
@@ -130,7 +118,7 @@ resetStopLoss = do
     slm <-
         R.asks stopLossMap >>=
         (liftIO . atomically . readTVar)
-    trigger <-
+    triggered <-
         R.asks stopLossTriggered >>=
         (liftIO . atomically . readTVar)
     if null slm
@@ -159,18 +147,17 @@ resetStopLoss = do
                     , Mex.orderOrderQty = Just 1
                     }
             updatePositionSize 0
-            Mex.MimeResult {Mex.mimeResultResponse = resp} <-
-                case trigger of
-                    None ->
+            if triggered
+                then restart
+                else do
+                    Mex.MimeResult {Mex.mimeResultResponse = resp} <-
                         bulkAmendOrders
                             [stopLossLong, stopLossShort]
-                    Long -> bulkAmendOrders [stopLossShort]
-                    Short -> bulkAmendOrders [stopLossLong]
-            let HTTP.Status {statusCode = code} =
-                    responseStatus resp
-            if code == 200
-                then return ()
-                else fail "stopLoss reset failed"
+                    let HTTP.Status {statusCode = code} =
+                            responseStatus resp
+                    if code == 200
+                        then return ()
+                        else fail "stopLoss reset failed"
 
 manageRisk :: Double -> Maybe Double -> BitMEXBot IO ()
 manageRisk currQty Nothing
@@ -233,13 +220,8 @@ riskManager botState@BotState {..} config = do
         _ -> do
             return ()
 
-toggleStopLoss ::
-       Maybe Side -> TVar StopLossTriggered -> IO ()
-toggleStopLoss (Just Buy) t =
-    atomically $ (writeTVar t Short)
-toggleStopLoss (Just Sell) t =
-    atomically $ (writeTVar t Long)
-toggleStopLoss _ _ = return ()
+setStopLoss :: TVar Bool -> IO ()
+setStopLoss t = atomically $ (writeTVar t True)
 
 stopLossWatcher :: BotState -> BitMEXWrapperConfig -> IO ()
 stopLossWatcher botState@BotState {..} config = do
@@ -255,17 +237,51 @@ stopLossWatcher botState@BotState {..} config = do
                     case text of
                         Just "StopOrderTriggered" ->
                             case stat of
-                                Just "Filled" -> do
+                                Just "Filled" ->
                                     unWrapBotWith
                                         restart
                                         botState
                                         config
-                                _ ->
-                                    toggleStopLoss
-                                        s
+                                _ -> do
+                                    setStopLoss
                                         stopLossTriggered
+                                    -- Stop managing the triggered stop-loss order,
+                                    -- create new stop-loss orders and leave the
+                                    -- old placeholder stop-loss order alone,
+                                    -- it will get canceled eventually
+                                    unWrapBotWith
+                                        (cancelOtherStopLoss
+                                             s
+                                             stopLossMap)
+                                        botState
+                                        config
                         _ -> return ()
         _ -> return ()
+
+cancelOtherStopLoss ::
+       Maybe Side
+    -> TVar (HashMap Text (Text, Double))
+    -> BitMEXBot IO ()
+cancelOtherStopLoss (Just Buy) m = do
+    slm <- liftIO $ atomically $ readTVar m
+    let o =
+            orderWithId
+                (OrderID
+                     (map fst $
+                      HM.lookup
+                          "LONG_POSITION_STOP_LOSS"
+                          slm))
+    (cancelOrders [o]) >> initStopLossOrders
+cancelOtherStopLoss (Just Sell) m = do
+    slm <- liftIO $ atomically $ readTVar m
+    let o =
+            orderWithId
+                (OrderID
+                     (map fst $
+                      HM.lookup
+                          "SHORT_POSITION_STOP_LOSS"
+                          slm))
+    (cancelOrders [o]) >> initStopLossOrders
 
 pnlTracker :: PnLQueue -> IO ()
 pnlTracker q =
@@ -282,7 +298,7 @@ restart
     R.asks stopLossMap >>= \m ->
         liftIO $ atomically $ writeTVar m mempty
     R.asks stopLossTriggered >>= \t ->
-        liftIO $ atomically $ writeTVar t None
+        liftIO $ atomically $ writeTVar t False
     (BitMEXBot . lift $
      makeRequest
          (Mex.orderCancelAll

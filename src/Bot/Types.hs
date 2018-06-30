@@ -13,7 +13,7 @@ module Bot.Types
     , ExecutionQueue(..)
     , MarginQueue(..)
     , MessageQueue(..)
-    , StopLossTriggered(..)
+    -- , StopLossTriggered(..)
     , PnLQueue(..)
     , RiskManagerQueue(..)
     , StopLossWatcherQueue(..)
@@ -92,11 +92,11 @@ newtype PnLQueue = PnLQueue
     { unPnlQueue :: (TQueue (Maybe Response))
     }
 
-data StopLossTriggered
-    = Short
-    | Long
-    | None
-    deriving (Eq, Show)
+-- data StopLossTriggered
+--     = Short
+--     | Long
+--     | None
+--     deriving (Eq, Show)
 
 data BotState = BotState
     { connection :: !Connection
@@ -106,7 +106,7 @@ data BotState = BotState
     , pnlQueue          :: !PnLQueue
     , positionSize      :: !(TVar Int)
     , stopLossMap       :: !(TVar (HashMap Text (Text, Double)))
-    , stopLossTriggered :: !(TVar StopLossTriggered)
+    , stopLossTriggered :: !(TVar Bool)
     }
 
 newtype BitMEXBot m a = BitMEXBot
