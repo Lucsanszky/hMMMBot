@@ -3,9 +3,13 @@ module Bot.Concurrent
     , readResponse
     ) where
 
-import           BasicPrelude
+import           BasicPrelude                  hiding (head)
 import           BitMEXClient
-    ( Response (..)
+    ( RespExecution (..)
+    , RespMargin (..)
+    , RespPosition (..)
+    , Response (..)
+    , TABLE (..)
     )
 import           Bot.Types
 import           Control.Concurrent.STM.TQueue
@@ -14,6 +18,7 @@ import           Control.Concurrent.STM.TQueue
     , writeTQueue
     )
 import           Control.Monad.STM             (STM, retry)
+import           Data.Vector                   (head, (!?))
 
 processResponse :: BotState -> Maybe Response -> STM ()
 processResponse (BotState {..}) msg = do
@@ -25,26 +30,36 @@ processResponse (BotState {..}) msg = do
                     writeTQueue
                         (unLobQueue lobQueue)
                         (Just (OB10 t))
-                P t ->
-                    writeTQueue
-                        (unPositionQueue positionQueue)
-                        (Just (P t))
-                O t ->
-                    writeTQueue
-                        (unOrderQueue orderQueue)
-                        (Just (O t))
-                M t ->
-                    writeTQueue
-                        (unMarginQueue marginQueue)
-                        (Just (M t))
-                Exe t ->
-                    writeTQueue
-                        (unExecutionQueue executionQueue)
-                        (Just (Exe t))
-                x ->
-                    writeTQueue
-                        (unMessageQueue messageQueue)
-                        (Just x)
+                posResp@(P (TABLE {_data = positionData})) -> do
+                    let RespPosition {currentQty = currQty} =
+                            head positionData
+                    case currQty of
+                        Nothing -> return ()
+                        Just _ ->
+                            writeTQueue
+                                (unRiskManagerQueue
+                                     riskManagerQueue)
+                                (Just posResp)
+                marginResp@(M (TABLE {_data = marginData})) -> do
+                    let RespMargin {realisedPnl = rpnl} =
+                            head marginData
+                    case rpnl of
+                        Nothing -> return ()
+                        Just _ ->
+                            writeTQueue
+                                (unPnlQueue pnlQueue)
+                                (Just marginResp)
+                execResp@(Exe (TABLE {_data = execData})) -> do
+                    case execData !? 0 of
+                        Nothing -> return ()
+                        Just (RespExecution {triggered = text}) ->
+                            case text of
+                                Just "StopOrderTriggered" ->
+                                    writeTQueue
+                                        (unSLWQueue slwQueue)
+                                        (Just execResp)
+                                _ -> return ()
+                _ -> return ()
 
 readResponse :: TQueue (Maybe Response) -> STM Response
 readResponse q = do

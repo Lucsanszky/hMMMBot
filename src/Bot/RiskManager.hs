@@ -204,7 +204,7 @@ riskManager :: BotState -> BitMEXWrapperConfig -> IO ()
 riskManager botState@BotState {..} config = do
     resp <-
         atomically $
-        readResponse $ unPositionQueue positionQueue
+        readResponse $ unRiskManagerQueue riskManagerQueue
     case resp of
         P (TABLE {_data = positionData}) -> do
             let RespPosition { execQty = qty
@@ -213,6 +213,7 @@ riskManager botState@BotState {..} config = do
                              } = head positionData
             -- asshole way to check if both values are "Just"
             -- while keeping the second value
+            -- TODO: simplify, since we can
             case qty >> currQty of
                 Nothing -> do
                     case currQty of
@@ -240,9 +241,7 @@ toggleStopLoss _ _ = return ()
 
 stopLossWatcher :: BotState -> BitMEXWrapperConfig -> IO ()
 stopLossWatcher botState@BotState {..} config = do
-    resp <-
-        atomically $
-        readResponse $ unExecutionQueue executionQueue
+    resp <- atomically $ readResponse $ unSLWQueue slwQueue
     case resp of
         Exe (TABLE {_data = execData}) -> do
             case execData !? 0 of

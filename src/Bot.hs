@@ -76,16 +76,10 @@ tradeLoop :: BitMEXBot IO ()
 tradeLoop = do
     config <- BitMEXBot $ R.lift $ R.ask
     botState@(BotState {..}) <- R.ask
-    M (TABLE {_data = marginData}) <-
-        liftIO $
-        atomically $
-        readResponse $ unMarginQueue marginQueue
     OB10 (TABLE {_data = orderbookData}) <-
         liftIO $
         atomically $ readResponse $ unLobQueue lobQueue
-    let RespMargin {marginBalance = marginAmount} =
-            head marginData
-        RespOrderBook10 {asks = obAsks, bids = obBids} =
+    let RespOrderBook10 {asks = obAsks, bids = obBids} =
             head orderbookData
     -- Setup placeholder stoploss orders
     initStopLossOrders
@@ -103,12 +97,10 @@ initBot conn = do
     pub <- R.asks publicKey
     time <- liftIO $ makeTimestamp <$> getPOSIXTime
     sig <- sign (pack ("GET" ++ "/realtime" ++ show time))
-    positionQueue <- liftIO $ atomically newTQueue
     lobQueue <- liftIO $ atomically newTQueue
-    orderQueue <- liftIO $ atomically newTQueue
-    marginQueue <- liftIO $ atomically newTQueue
-    executionQueue <- liftIO $ atomically newTQueue
-    messageQueue <- liftIO $ atomically newTQueue
+    riskManagerQueue <- liftIO $ atomically newTQueue
+    slwQueue <- liftIO $ atomically newTQueue
+    pnlQueue <- liftIO $ atomically newTQueue
     positionSize <- liftIO $ atomically $ newTVar 0
     stopLossMap <-
         liftIO $
@@ -118,12 +110,11 @@ initBot conn = do
     let botState =
             BotState
             { connection = conn
-            , positionQueue = PositionQueue positionQueue
             , lobQueue = LOBQueue lobQueue
-            , orderQueue = OrderQueue orderQueue
-            , marginQueue = MarginQueue marginQueue
-            , executionQueue = ExecutionQueue executionQueue
-            , messageQueue = MessageQueue messageQueue
+            , riskManagerQueue =
+                  RiskManagerQueue riskManagerQueue
+            , slwQueue = StopLossWatcherQueue slwQueue
+            , pnlQueue = PnLQueue pnlQueue
             , positionSize = positionSize
             , stopLossMap = stopLossMap
             , stopLossTriggered = stopLossTriggered

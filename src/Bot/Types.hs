@@ -14,6 +14,9 @@ module Bot.Types
     , MarginQueue(..)
     , MessageQueue(..)
     , StopLossTriggered(..)
+    , PnLQueue(..)
+    , RiskManagerQueue(..)
+    , StopLossWatcherQueue(..)
     ) where
 
 import           BasicPrelude
@@ -77,6 +80,18 @@ newtype MessageQueue = MessageQueue
     { unMessageQueue :: (TQueue (Maybe Response))
     }
 
+newtype RiskManagerQueue = RiskManagerQueue
+    { unRiskManagerQueue :: TQueue (Maybe Response)
+    }
+
+newtype StopLossWatcherQueue = StopLossWatcherQueue
+    { unSLWQueue :: (TQueue (Maybe Response))
+    }
+
+newtype PnLQueue = PnLQueue
+    { unPnlQueue :: (TQueue (Maybe Response))
+    }
+
 data StopLossTriggered
     = Short
     | Long
@@ -84,13 +99,11 @@ data StopLossTriggered
     deriving (Eq, Show)
 
 data BotState = BotState
-    { connection        :: !Connection
-    , positionQueue     :: !PositionQueue
+    { connection :: !Connection
+    , riskManagerQueue  :: !RiskManagerQueue
+    , slwQueue          :: !StopLossWatcherQueue
     , lobQueue          :: !LOBQueue
-    , orderQueue        :: !OrderQueue
-    , marginQueue       :: !MarginQueue
-    , executionQueue    :: !ExecutionQueue
-    , messageQueue      :: !MessageQueue
+    , pnlQueue          :: !PnLQueue
     , positionSize      :: !(TVar Int)
     , stopLossMap       :: !(TVar (HashMap Text (Text, Double)))
     , stopLossTriggered :: !(TVar StopLossTriggered)
