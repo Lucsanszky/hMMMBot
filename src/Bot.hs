@@ -24,6 +24,9 @@ import           Data.Aeson
     , toJSON
     )
 import           Data.ByteString.Char8         (pack)
+import qualified Data.HashMap.Strict           as HM
+    ( lookup
+    )
 import           Data.Time.Clock.POSIX
     ( getPOSIXTime
     )
@@ -45,7 +48,8 @@ trade :: (Double, Double) -> BitMEXBot IO ()
 trade (bestAsk, bestBid) = do
     BotState {..} <- R.ask
     OB10 (TABLE {_data = orderbookData}) <-
-        liftIO $ atomically $ readResponse lobQueue
+        liftIO $
+        atomically $ readResponse $ unLobQueue lobQueue
     let RespOrderBook10 {asks = obAsks, bids = obBids} =
             head orderbookData
         newBestAsk = head $ head obAsks
@@ -73,9 +77,12 @@ tradeLoop = do
     config <- BitMEXBot $ R.lift $ R.ask
     botState@(BotState {..}) <- R.ask
     M (TABLE {_data = marginData}) <-
-        liftIO $ atomically $ readResponse marginQueue
+        liftIO $
+        atomically $
+        readResponse $ unMarginQueue marginQueue
     OB10 (TABLE {_data = orderbookData}) <-
-        liftIO $ atomically $ readResponse lobQueue
+        liftIO $
+        atomically $ readResponse $ unLobQueue lobQueue
     let RespMargin {marginBalance = marginAmount} =
             head marginData
         RespOrderBook10 {asks = obAsks, bids = obBids} =
@@ -111,12 +118,12 @@ initBot conn = do
     let botState =
             BotState
             { connection = conn
-            , positionQueue = positionQueue
-            , lobQueue = lobQueue
-            , orderQueue = orderQueue
-            , marginQueue = marginQueue
-            , executionQueue = executionQueue
-            , messageQueue = messageQueue
+            , positionQueue = PositionQueue positionQueue
+            , lobQueue = LOBQueue lobQueue
+            , orderQueue = OrderQueue orderQueue
+            , marginQueue = MarginQueue marginQueue
+            , executionQueue = ExecutionQueue executionQueue
+            , messageQueue = MessageQueue messageQueue
             , positionSize = positionSize
             , stopLossMap = stopLossMap
             , stopLossTriggered = stopLossTriggered

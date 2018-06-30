@@ -57,6 +57,7 @@ executable hMMMBot
                  Bot.Math
                  Bot.Types
                  Bot.RiskManager
+                 Bot.OrderTemplates
                  Bot.Logging
 
   -- LANGUAGE extensions used by modules in this package.

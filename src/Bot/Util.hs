@@ -38,6 +38,7 @@ import           BitMEXClient
     , Symbol (..)
     , makeRequest
     )
+import           Bot.OrderTemplates
 import           Bot.Types
     ( BitMEXBot (..)
     , BotState (..)
@@ -71,40 +72,6 @@ unWrapBotWith f botState config =
 -------------------------------------------------------------
 -- ORDERS
 -------------------------------------------------------------
-prepareOrder ::
-       Maybe Text
-    -> Maybe Text
-    -> Maybe Text
-    -> Maybe OrderType
-    -> Maybe Side
-    -> Maybe Double
-    -> Maybe Double
-    -> Maybe Double
-    -> Maybe ExecutionInstruction
-    -> Maybe ContingencyType
-    -> Mex.Order
-prepareOrder ordId clientId linkId orderType side price stopPx orderQty executionType contingencyType = do
-    let order =
-            (Mex.mkOrder "")
-            { Mex.orderSymbol =
-                  Just ((T.pack . show) XBTUSD)
-            , Mex.orderClOrdId = clientId
-            , Mex.orderClOrdLinkId = linkId
-            , Mex.orderOrdType =
-                  map (T.pack . show) orderType
-            , Mex.orderSide = map (T.pack . show) side
-            , Mex.orderPrice = price
-            , Mex.orderStopPx = stopPx
-            , Mex.orderOrderQty = orderQty
-            , Mex.orderExecInst =
-                  map (T.pack . show) executionType
-            , Mex.orderContingencyType =
-                  map (T.pack . show) contingencyType
-            }
-    case ordId of
-        Nothing  -> order
-        Just oid -> order {Mex.orderOrderId = oid}
-
 placeOrder ::
        Mex.Order -> BitMEXBot IO (Mex.MimeResult Mex.Order)
 placeOrder order = do
@@ -168,32 +135,8 @@ insertStopLossOrder (oid, qty) stopLossType = do
 
 initStopLossOrders :: BitMEXBot IO ()
 initStopLossOrders = do
-    let stopLossBuy =
-            prepareOrder
-                Nothing
-                Nothing
-                Nothing
-                (Just StopLimit)
-                (Just Sell)
-                (Just 0.5)
-                (Just 1)
-                (Just 1)
-                (Just LastPrice)
-                Nothing
-        stopLossSell =
-            prepareOrder
-                Nothing
-                Nothing
-                Nothing
-                (Just StopLimit)
-                (Just Buy)
-                (Just 1000000)
-                (Just 99999)
-                (Just 1)
-                (Just LastPrice)
-                Nothing
     Mex.MimeResult {mimeResult = res} <-
-        placeBulkOrder [stopLossBuy, stopLossSell]
+        placeBulkOrder [longPosStopLoss, shortPosStopLoss]
     case res of
         Left (Mex.MimeError {mimeError = s}) -> fail s
         Right orders ->
@@ -224,28 +167,4 @@ makeMarket ::
     -> Double
     -> BitMEXBot IO (Mex.MimeResult [Mex.Order])
 makeMarket ask bid = do
-    let buyOrder =
-            prepareOrder
-                Nothing
-                Nothing
-                Nothing
-                (Just Limit)
-                (Just Buy)
-                (Just bid)
-                Nothing
-                (Just 21)
-                Nothing
-                Nothing
-        sellOrder =
-            prepareOrder
-                Nothing
-                Nothing
-                Nothing
-                (Just Limit)
-                (Just Sell)
-                (Just ask)
-                Nothing
-                (Just 21)
-                Nothing
-                Nothing
-    placeBulkOrder [buyOrder, sellOrder]
+    placeBulkOrder [limitBuy bid, limitSell ask]

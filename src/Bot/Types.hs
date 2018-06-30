@@ -1,6 +1,18 @@
 module Bot.Types
     ( BotState(..)
     , BitMEXBot(..)
+    , StopPx(..)
+    , LimitPx(..)
+    , Qty(..)
+    , ClientID(..)
+    , LinkID(..)
+    , OrderID(..)
+    , PositionQueue(..)
+    , LOBQueue(..)
+    , OrderQueue(..)
+    , ExecutionQueue(..)
+    , MarginQueue(..)
+    , MessageQueue(..)
     ) where
 
 import           BasicPrelude
@@ -16,14 +28,62 @@ import           Control.Monad.Reader
     )
 import           Network.WebSockets            (Connection)
 
+newtype StopPx =
+    StopPx (Maybe Double)
+    deriving (Eq, Ord, Show)
+
+newtype LimitPx =
+    LimitPx (Maybe Double)
+    deriving (Eq, Ord, Show)
+
+newtype Qty =
+    Qty (Maybe Double)
+    deriving (Eq, Ord, Show)
+
+newtype ClientID =
+    ClientID (Maybe Text)
+    deriving (Eq, Ord, Show)
+
+newtype LinkID =
+    LinkID (Maybe Text)
+    deriving (Eq, Ord, Show)
+
+newtype OrderID =
+    OrderID (Maybe Text)
+    deriving (Eq, Ord, Show)
+
+newtype PositionQueue = PositionQueue
+    { unPositionQueue :: TQueue (Maybe Response)
+    }
+
+newtype LOBQueue = LOBQueue
+    { unLobQueue :: TQueue (Maybe Response)
+    }
+
+newtype OrderQueue = OrderQueue
+    { unOrderQueue :: (TQueue (Maybe Response))
+    }
+
+newtype MarginQueue = MarginQueue
+    { unMarginQueue :: (TQueue (Maybe Response))
+    }
+
+newtype ExecutionQueue = ExecutionQueue
+    { unExecutionQueue :: (TQueue (Maybe Response))
+    }
+
+newtype MessageQueue = MessageQueue
+    { unMessageQueue :: (TQueue (Maybe Response))
+    }
+
 data BotState = BotState
     { connection        :: !Connection
-    , positionQueue     :: !(TQueue (Maybe Response))
-    , lobQueue          :: !(TQueue (Maybe Response))
-    , orderQueue        :: !(TQueue (Maybe Response))
-    , marginQueue       :: !(TQueue (Maybe Response))
-    , executionQueue    :: !(TQueue (Maybe Response))
-    , messageQueue      :: !(TQueue (Maybe Response))
+    , positionQueue     :: !PositionQueue
+    , lobQueue          :: !LOBQueue
+    , orderQueue        :: !OrderQueue
+    , marginQueue       :: !MarginQueue
+    , executionQueue    :: !ExecutionQueue
+    , messageQueue      :: !MessageQueue
     , positionSize      :: !(TVar Int)
     , stopLossMap       :: !(TVar (HashMap Text (Text, Double)))
     , stopLossTriggered :: !(TVar Bool)

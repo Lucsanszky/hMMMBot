@@ -9,6 +9,7 @@ import qualified BitMEX                      as Mex
     , ContentType (..)
     , MimeJSON (..)
     , MimeResult (..)
+    , Order (..)
     , orderCancelAll
     )
 import           BitMEXClient
@@ -22,10 +23,8 @@ import           BitMEXClient
     )
 import           Bot.Concurrent              (readResponse)
 import           Bot.Math                    (roundPrice)
+import           Bot.OrderTemplates
 import           Bot.Types
-    ( BitMEXBot (..)
-    , BotState (..)
-    )
 import           Bot.Util
     ( bulkAmendOrders
     , initStopLossOrders
@@ -57,7 +56,9 @@ updatePositionsAndAmend stopLoss currQty avgCostPrice = do
     slm <-
         R.asks stopLossMap >>=
         (liftIO . atomically . readTVar)
-    triggered <- R.asks stopLossTriggered >>= (liftIO . atomically . readTVar)
+    triggered <-
+        R.asks stopLossTriggered >>=
+        (liftIO . atomically . readTVar)
     if null slm
         then return ()
         else do
@@ -71,19 +72,17 @@ updatePositionsAndAmend stopLoss currQty avgCostPrice = do
                 then return ()
                 else do
                     let newStopLoss =
-                            prepareOrder
-                                (Just oid)
-                                Nothing
-                                Nothing
-                                Nothing
-                                Nothing
-                                avgCostPrice
-                                (if triggered
-                                    then Nothing
-                                    else (map f avgCostPrice))
-                                (Just currQty)
-                                Nothing
-                                Nothing
+                            (orderWithId
+                                 (OrderID (Just oid)))
+                            { Mex.orderPrice = avgCostPrice
+                            , Mex.orderStopPx =
+                                  if triggered
+                                      then Nothing
+                                      else (map f
+                                                avgCostPrice)
+                            , Mex.orderOrderQty =
+                                  Just currQty
+                            }
                     insertStopLossOrder
                         (oid, currQty)
                         stopLoss
@@ -98,31 +97,23 @@ updatePositionsAndAmend stopLoss currQty avgCostPrice = do
                         else fail "amending failed"
   where
     stopLossLong slm =
-        prepareOrder
-            (map fst
-                 (HM.lookup "LONG_POSITION_STOP_LOSS" slm))
-            Nothing
-            Nothing
-            Nothing
-            Nothing
-            (Just 0.5)
-            (Just 1)
-            (Just 1)
-            Nothing
-            Nothing
+        (orderWithId
+             (OrderID
+                  (map fst $
+                   HM.lookup "LONG_POSITION_STOP_LOSS" slm)))
+        { Mex.orderPrice = Just 0.5
+        , Mex.orderStopPx = Just 1
+        , Mex.orderOrderQty = Just 1
+        }
     stopLossShort slm =
-        prepareOrder
-            (map fst
-                 (HM.lookup "SHORT_POSITION_STOP_LOSS" slm))
-            Nothing
-            Nothing
-            Nothing
-            (Just Buy)
-            (Just 1000000)
-            (Just 99999)
-            (Just 1)
-            Nothing
-            Nothing
+        (orderWithId
+             (OrderID
+                  (map fst $
+                   HM.lookup "SHORT_POSITION_STOP_LOSS" slm)))
+        { Mex.orderPrice = Just 1000000
+        , Mex.orderStopPx = Just 99999
+        , Mex.orderOrderQty = Just 1
+        }
 
 resetStopLoss :: BitMEXBot IO ()
 resetStopLoss = do
@@ -133,35 +124,27 @@ resetStopLoss = do
         then return ()
         else do
             let stopLossLong =
-                    prepareOrder
-                        (map fst
-                             (HM.lookup
-                                  "LONG_POSITION_STOP_LOSS"
-                                  slm))
-                        Nothing
-                        Nothing
-                        Nothing
-                        Nothing
-                        (Just 0.5)
-                        (Just 1)
-                        (Just 1)
-                        Nothing
-                        Nothing
+                    (orderWithId
+                         (OrderID
+                              (map fst $
+                               HM.lookup
+                                   "LONG_POSITION_STOP_LOSS"
+                                   slm)))
+                    { Mex.orderPrice = Just 0.5
+                    , Mex.orderStopPx = Just 1
+                    , Mex.orderOrderQty = Just 1
+                    }
                 stopLossShort =
-                    prepareOrder
-                        (map fst
-                             (HM.lookup
-                                 "SHORT_POSITION_STOP_LOSS"
-                                  slm))
-                        Nothing
-                        Nothing
-                        Nothing
-                        (Just Buy)
-                        (Just 1000000)
-                        (Just 99999)
-                        (Just 1)
-                        Nothing
-                        Nothing
+                    (orderWithId
+                         (OrderID
+                              (map fst $
+                               HM.lookup
+                                   "SHORT_POSITION_STOP_LOSS"
+                                   slm)))
+                    { Mex.orderPrice = Just 1000000
+                    , Mex.orderStopPx = Just 99999
+                    , Mex.orderOrderQty = Just 1
+                    }
             updatePositionSize 0
             Mex.MimeResult {Mex.mimeResultResponse = resp} <-
                 bulkAmendOrders
@@ -204,7 +187,9 @@ manageRisk currQty (Just avgCostPrice)
 
 riskManager :: BotState -> BitMEXWrapperConfig -> IO ()
 riskManager botState@BotState {..} config = do
-    resp <- atomically $ readResponse positionQueue
+    resp <-
+        atomically $
+        readResponse $ unPositionQueue positionQueue
     case resp of
         P (TABLE {_data = positionData}) -> do
             let RespPosition { execQty = qty
@@ -235,7 +220,9 @@ toggleStopLoss t = atomically $ (writeTVar t True)
 
 stopLossWatcher :: BotState -> BitMEXWrapperConfig -> IO ()
 stopLossWatcher botState@BotState {..} config = do
-    resp <- atomically $ readResponse executionQueue
+    resp <-
+        atomically $
+        readResponse $ unExecutionQueue executionQueue
     case resp of
         Exe (TABLE {_data = execData}) -> do
             case execData !? 0 of
@@ -244,9 +231,16 @@ stopLossWatcher botState@BotState {..} config = do
                                     , ordStatus = stat
                                     }) ->
                     case text of
-                        Just "StopOrderTriggered" -> case stat of
-                            Just "Filled" -> unWrapBotWith restart botState config
-                            _ -> toggleStopLoss stopLossTriggered
+                        Just "StopOrderTriggered" ->
+                            case stat of
+                                Just "Filled" ->
+                                    unWrapBotWith
+                                        restart
+                                        botState
+                                        config
+                                _ ->
+                                    toggleStopLoss
+                                        stopLossTriggered
                         _ -> return ()
         _ -> return ()
 

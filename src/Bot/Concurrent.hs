@@ -8,8 +8,6 @@ import           BitMEXClient
     ( Response (..)
     )
 import           Bot.Types
-    ( BotState (..)
-    )
 import           Control.Concurrent.STM.TQueue
     ( TQueue
     , readTQueue
@@ -24,16 +22,29 @@ processResponse (BotState {..}) msg = do
         Just r ->
             case r of
                 OB10 t ->
-                    writeTQueue lobQueue (Just (OB10 t))
+                    writeTQueue
+                        (unLobQueue lobQueue)
+                        (Just (OB10 t))
                 P t ->
-                    writeTQueue positionQueue (Just (P t))
-                O t -> writeTQueue orderQueue (Just (O t))
-                M t -> writeTQueue marginQueue (Just (M t))
+                    writeTQueue
+                        (unPositionQueue positionQueue)
+                        (Just (P t))
+                O t ->
+                    writeTQueue
+                        (unOrderQueue orderQueue)
+                        (Just (O t))
+                M t ->
+                    writeTQueue
+                        (unMarginQueue marginQueue)
+                        (Just (M t))
                 Exe t ->
                     writeTQueue
-                        executionQueue
+                        (unExecutionQueue executionQueue)
                         (Just (Exe t))
-                x -> writeTQueue messageQueue (Just x)
+                x ->
+                    writeTQueue
+                        (unMessageQueue messageQueue)
+                        (Just x)
 
 readResponse :: TQueue (Maybe Response) -> STM Response
 readResponse q = do
