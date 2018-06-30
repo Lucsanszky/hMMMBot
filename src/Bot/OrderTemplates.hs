@@ -80,7 +80,7 @@ shortPosStopLoss =
         (Just StopLimit)
         (Just Buy)
         (LimitPx (Just 1000000))
-        (StopPx (Just 1))
+        (StopPx (Just 999999))
         (Qty (Just 1))
         (Just LastPrice)
         (Nothing)
