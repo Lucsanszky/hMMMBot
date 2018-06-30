@@ -13,6 +13,7 @@ module Bot.Types
     , ExecutionQueue(..)
     , MarginQueue(..)
     , MessageQueue(..)
+    , StopLossTriggered(..)
     ) where
 
 import           BasicPrelude
@@ -76,6 +77,12 @@ newtype MessageQueue = MessageQueue
     { unMessageQueue :: (TQueue (Maybe Response))
     }
 
+data StopLossTriggered
+    = Short
+    | Long
+    | None
+    deriving (Eq, Show)
+
 data BotState = BotState
     { connection        :: !Connection
     , positionQueue     :: !PositionQueue
@@ -86,7 +93,7 @@ data BotState = BotState
     , messageQueue      :: !MessageQueue
     , positionSize      :: !(TVar Int)
     , stopLossMap       :: !(TVar (HashMap Text (Text, Double)))
-    , stopLossTriggered :: !(TVar Bool)
+    , stopLossTriggered :: !(TVar StopLossTriggered)
     }
 
 newtype BitMEXBot m a = BitMEXBot

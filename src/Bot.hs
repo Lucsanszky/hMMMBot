@@ -114,7 +114,7 @@ initBot conn = do
         liftIO $
         atomically $
         newTVar (mempty :: HashMap Text (Text, Double))
-    stopLossTriggered <- liftIO $ atomically $ newTVar False
+    stopLossTriggered <- liftIO $ atomically $ newTVar None
     let botState =
             BotState
             { connection = conn
