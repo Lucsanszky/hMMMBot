@@ -89,6 +89,8 @@ tradeLoop = do
     _ <-
         liftIO $
         forkIO $ forever $ stopLossWatcher botState config
+    _ <- liftIO $
+         forkIO $ forever $ pnlTracker pnlQueue
     trade (head $ head obAsks, head $ head obBids)
 
 initBot :: BitMEXApp IO ()

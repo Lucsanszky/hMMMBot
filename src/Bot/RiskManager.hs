@@ -1,6 +1,7 @@
 module Bot.RiskManager
     ( riskManager
     , stopLossWatcher
+    , pnlTracker
     ) where
 
 import           BasicPrelude                hiding (head)
@@ -15,6 +16,7 @@ import qualified BitMEX                      as Mex
 import           BitMEXClient
     ( BitMEXWrapperConfig
     , RespExecution (..)
+    , RespMargin (..)
     , RespPosition (..)
     , Response (..)
     , Side (..)
@@ -264,6 +266,13 @@ stopLossWatcher botState@BotState {..} config = do
                                         stopLossTriggered
                         _ -> return ()
         _ -> return ()
+
+pnlTracker :: PnLQueue -> IO ()
+pnlTracker q =
+    (atomically $ readResponse $ unPnlQueue q) >>= \(M (TABLE {_data = marginData})) -> do
+        let RespMargin {realisedPnl = rpnl} =
+                head marginData
+        print rpnl
 
 restart :: BitMEXBot IO ()
 restart
