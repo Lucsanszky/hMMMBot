@@ -31,7 +31,6 @@ import           Bot.OrderTemplates
 import           Bot.Types
 import           Bot.Util
     ( amendOrder
-    , amendStopOrder
     , bulkAmendOrders
     , cancelOrders
     , cancelStopOrder
@@ -81,7 +80,7 @@ manageRisk currQty avgCostPrice
                         cancelStopOrder (OrderID oid)
                         placeStopOrder
                             (placeOrder newStopLoss)
-                    else amendStopOrder oid stopPx
+                    else return ()
     | currQty < 0 = do
         OrderID oid <-
             R.asks stopOrderId >>=
@@ -102,7 +101,7 @@ manageRisk currQty avgCostPrice
                         cancelStopOrder (OrderID oid)
                         placeStopOrder
                             (placeOrder newStopLoss)
-                    else amendStopOrder oid stopPx
+                    else return ()
     | otherwise = do
         OrderID oid <-
             R.asks stopOrderId >>=
