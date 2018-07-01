@@ -12,7 +12,7 @@ import qualified BitMEX       as Mex
 import           BitMEXClient
     ( BitMEXReader (..)
     , BitMEXWrapperConfig
-    , ContingencyType
+    , ContingencyType (..)
     , ExecutionInstruction (..)
     , OrderType (..)
     , Side (..)
@@ -95,8 +95,8 @@ limitBuy bid =
         (LimitPx (Just bid))
         (StopPx Nothing)
         (Qty (Just 21))
-        (Nothing)
-        (Nothing)
+        (Just [ParticipateDoNotInitiate])
+        Nothing
 
 limitSell :: Double -> Mex.Order
 limitSell ask =
@@ -109,8 +109,8 @@ limitSell ask =
         (LimitPx (Just ask))
         (StopPx Nothing)
         (Qty (Just 21))
-        (Nothing)
-        (Nothing)
+        (Just [ParticipateDoNotInitiate])
+        Nothing
 
 orderWithId :: OrderID -> Mex.Order
 orderWithId oid =
