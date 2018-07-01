@@ -89,8 +89,7 @@ tradeLoop = do
     _ <-
         liftIO $
         forkIO $ forever $ stopLossWatcher botState config
-    _ <- liftIO $
-         forkIO $ forever $ pnlTracker pnlQueue
+    _ <- liftIO $ forkIO $ forever $ pnlTracker pnlQueue
     trade (head $ head obAsks, head $ head obBids)
 
 initBot :: BitMEXApp IO ()
@@ -119,7 +118,6 @@ initBot conn = do
             , pnlQueue = PnLQueue pnlQueue
             , positionSize = positionSize
             , stopLossMap = stopLossMap
-            , stopLossTriggered = stopLossTriggered
             }
     liftIO $ do
         sendMessage

@@ -118,9 +118,6 @@ resetStopLoss = do
     slm <-
         R.asks stopLossMap >>=
         (liftIO . atomically . readTVar)
-    triggered <-
-        R.asks stopLossTriggered >>=
-        (liftIO . atomically . readTVar)
     if null slm
         then return ()
         else do
@@ -147,17 +144,14 @@ resetStopLoss = do
                     , Mex.orderOrderQty = Just 1
                     }
             updatePositionSize 0
-            if triggered
-                then restart
-                else do
-                    Mex.MimeResult {Mex.mimeResultResponse = resp} <-
-                        bulkAmendOrders
-                            [stopLossLong, stopLossShort]
-                    let HTTP.Status {statusCode = code} =
-                            responseStatus resp
-                    if code == 200
-                        then return ()
-                        else fail "stopLoss reset failed"
+            Mex.MimeResult {Mex.mimeResultResponse = resp} <-
+                bulkAmendOrders
+                    [stopLossLong, stopLossShort]
+            let HTTP.Status {statusCode = code} =
+                    responseStatus resp
+            if code == 200
+                then return ()
+                else fail "stopLoss reset failed"
 
 manageRisk :: Double -> Maybe Double -> BitMEXBot IO ()
 manageRisk currQty Nothing
@@ -236,52 +230,12 @@ stopLossWatcher botState@BotState {..} config = do
                                     }) ->
                     case text of
                         Just "StopOrderTriggered" ->
-                            case stat of
-                                Just "Filled" ->
-                                    unWrapBotWith
-                                        restart
-                                        botState
-                                        config
-                                _ -> do
-                                    setStopLoss
-                                        stopLossTriggered
-                                    -- Stop managing the triggered stop-loss order,
-                                    -- create new stop-loss orders and leave the
-                                    -- old placeholder stop-loss order alone,
-                                    -- it will get canceled eventually
-                                    unWrapBotWith
-                                        (cancelOtherStopLoss
-                                             s
-                                             stopLossMap)
-                                        botState
-                                        config
+                            unWrapBotWith
+                                restart
+                                botState
+                                config
                         _ -> return ()
         _ -> return ()
-
-cancelOtherStopLoss ::
-       Maybe Side
-    -> TVar (HashMap Text (Text, Double))
-    -> BitMEXBot IO ()
-cancelOtherStopLoss (Just Buy) m = do
-    slm <- liftIO $ atomically $ readTVar m
-    let o =
-            orderWithId
-                (OrderID
-                     (map fst $
-                      HM.lookup
-                          "LONG_POSITION_STOP_LOSS"
-                          slm))
-    (cancelOrders [o]) >> initStopLossOrders
-cancelOtherStopLoss (Just Sell) m = do
-    slm <- liftIO $ atomically $ readTVar m
-    let o =
-            orderWithId
-                (OrderID
-                     (map fst $
-                      HM.lookup
-                          "SHORT_POSITION_STOP_LOSS"
-                          slm))
-    (cancelOrders [o]) >> initStopLossOrders
 
 pnlTracker :: PnLQueue -> IO ()
 pnlTracker q =
@@ -297,8 +251,6 @@ restart
  = do
     R.asks stopLossMap >>= \m ->
         liftIO $ atomically $ writeTVar m mempty
-    R.asks stopLossTriggered >>= \t ->
-        liftIO $ atomically $ writeTVar t False
     (BitMEXBot . lift $
      makeRequest
          (Mex.orderCancelAll

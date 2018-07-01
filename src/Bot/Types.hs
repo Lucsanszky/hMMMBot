@@ -92,12 +92,6 @@ newtype PnLQueue = PnLQueue
     { unPnlQueue :: (TQueue (Maybe Response))
     }
 
--- data StopLossTriggered
---     = Short
---     | Long
---     | None
---     deriving (Eq, Show)
-
 data BotState = BotState
     { connection :: !Connection
     , riskManagerQueue  :: !RiskManagerQueue
@@ -106,7 +100,6 @@ data BotState = BotState
     , pnlQueue          :: !PnLQueue
     , positionSize      :: !(TVar Int)
     , stopLossMap       :: !(TVar (HashMap Text (Text, Double)))
-    , stopLossTriggered :: !(TVar Bool)
     }
 
 newtype BitMEXBot m a = BitMEXBot

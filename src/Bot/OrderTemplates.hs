@@ -14,7 +14,6 @@ import           BitMEXClient
     , BitMEXWrapperConfig
     , ContingencyType
     , ExecutionInstruction (..)
-    , OrderType
     , OrderType (..)
     , Side (..)
     , Symbol (..)
@@ -63,9 +62,9 @@ longPosStopLoss =
         (OrderID Nothing)
         (ClientID Nothing)
         (LinkID Nothing)
-        (Just StopLimit)
+        (Just Stop)
         (Just Sell)
-        (LimitPx (Just 0.5))
+        (LimitPx Nothing)
         (StopPx (Just 1))
         (Qty (Just 1))
         (Just LastPrice)
@@ -77,9 +76,9 @@ shortPosStopLoss =
         (OrderID Nothing)
         (ClientID Nothing)
         (LinkID Nothing)
-        (Just StopLimit)
+        (Just Stop)
         (Just Buy)
-        (LimitPx (Just 1000000))
+        (LimitPx Nothing)
         (StopPx (Just 999999))
         (Qty (Just 1))
         (Just LastPrice)
