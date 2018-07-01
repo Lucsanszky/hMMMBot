@@ -95,8 +95,7 @@ placeOrder order = do
     BitMEXBot . lift $ makeRequest orderRequest
 
 cancelOrders ::
-       [Text]
-    -> BitMEXBot IO (Mex.MimeResult [Mex.Order])
+       [Text] -> BitMEXBot IO (Mex.MimeResult [Mex.Order])
 cancelOrders ids = do
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderCancel
@@ -104,7 +103,7 @@ cancelOrders ids = do
                 (Mex.Accept Mex.MimeJSON)
         orderRequest =
             Mex._setBodyLBS orderTemplate $
-              "{\"orderID\": " <> encode ids <> "}"
+            "{\"orderID\": " <> encode ids <> "}"
     BitMEXBot . lift $ makeRequest orderRequest
 
 placeBulkOrder ::
@@ -175,7 +174,6 @@ cancelStopOrder :: OrderID -> BitMEXBot IO ()
 cancelStopOrder (OrderID (Just oid)) = do
     cancelOrders [oid] >> R.asks stopOrderId >>= \o ->
         liftIO $ atomically $ writeTVar o (OrderID Nothing)
-
 
 -------------------------------------------------------------
 -- MARKET MAKING
