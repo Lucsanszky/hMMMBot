@@ -3,10 +3,11 @@ module Bot.Util
     , prepareOrder
     , placeBulkOrder
     , placeOrder
+    , amendStopOrder
+    , cancelStopOrder
+    , placeStopOrder
     , amendOrder
     , cancelOrders
-    , initStopLossOrders
-    , insertStopLossOrder
     , bulkAmendOrders
     , unWrapBotWith
     ) where
@@ -44,6 +45,7 @@ import           Bot.OrderTemplates
 import           Bot.Types
     ( BitMEXBot (..)
     , BotState (..)
+    , OrderID (..)
     )
 import           Control.Concurrent.STM.TVar
     ( readTVar
@@ -57,6 +59,12 @@ import           Control.Monad.STM           (atomically)
 import           Data.Aeson                  (encode)
 import qualified Data.HashMap.Strict         as HM (insert)
 import qualified Data.Text                   as T (pack)
+import           Network.HTTP.Client
+    ( responseStatus
+    )
+import qualified Network.HTTP.Types.Status   as HTTP
+    ( Status (..)
+    )
 
 -------------------------------------------------------------
 -- GENERAL
@@ -87,16 +95,16 @@ placeOrder order = do
     BitMEXBot . lift $ makeRequest orderRequest
 
 cancelOrders ::
-       [Mex.Order]
+       [Text]
     -> BitMEXBot IO (Mex.MimeResult [Mex.Order])
-cancelOrders orders = do
+cancelOrders ids = do
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderCancel
                 (Mex.ContentType Mex.MimeJSON)
                 (Mex.Accept Mex.MimeJSON)
         orderRequest =
             Mex._setBodyLBS orderTemplate $
-            "{\"orders\": " <> encode orders <> "}"
+              "{\"orderID\": " <> encode ids <> "}"
     BitMEXBot . lift $ makeRequest orderRequest
 
 placeBulkOrder ::
@@ -136,43 +144,38 @@ bulkAmendOrders orders = do
             "{\"orders\": " <> encode orders <> "}"
     BitMEXBot . lift $ makeRequest orderRequest
 
-insertStopLossOrder ::
-       (Text, Double) -> Text -> BitMEXBot IO ()
-insertStopLossOrder (oid, qty) stopLossType = do
-    stopMap <- R.asks stopLossMap
-    slm <-
-        R.asks stopLossMap >>=
-        (liftIO . atomically . readTVar)
-    liftIO $
-        atomically $
-        writeTVar stopMap $
-        HM.insert stopLossType (oid, qty) slm
-
-initStopLossOrders :: BitMEXBot IO ()
-initStopLossOrders = do
-    Mex.MimeResult {mimeResult = res} <-
-        placeBulkOrder [longPosStopLoss, shortPosStopLoss]
+placeStopOrder ::
+       BitMEXBot IO (Mex.MimeResult Mex.Order)
+    -> BitMEXBot IO ()
+placeStopOrder order = do
+    Mex.MimeResult {Mex.mimeResult = res} <- order
     case res of
         Left (Mex.MimeError {mimeError = s}) -> fail s
-        Right orders ->
-            mapM_
-                (\Mex.Order { orderOrderId = oid
-                            , orderSide = oside
-                            , orderOrderQty = Just qty
-                            } ->
-                     case oside of
-                         Nothing ->
-                             fail
-                                 "CRITICAL: order side is missing"
-                         Just s ->
-                             if s == "Buy"
-                                 then insertStopLossOrder
-                                          (oid, qty)
-                                          "SHORT_POSITION_STOP_LOSS"
-                                 else insertStopLossOrder
-                                          (oid, qty)
-                                          "LONG_POSITION_STOP_LOSS")
-                orders
+        Right (Mex.Order {orderOrderId = oid}) ->
+            R.asks stopOrderId >>= \o ->
+                liftIO $
+                atomically $
+                writeTVar o (OrderID (Just oid))
+
+amendStopOrder ::
+       Maybe Text -> Maybe Double -> BitMEXBot IO ()
+amendStopOrder oid stopPx = do
+    let newStopLoss =
+            (orderWithId (OrderID oid))
+            {Mex.orderStopPx = stopPx}
+    Mex.MimeResult {Mex.mimeResultResponse = resp} <-
+        amendOrder newStopLoss
+    let HTTP.Status {statusCode = code} =
+            responseStatus resp
+    if code == 200
+        then return ()
+        else fail "amending failed"
+
+cancelStopOrder :: OrderID -> BitMEXBot IO ()
+cancelStopOrder (OrderID (Just oid)) = do
+    cancelOrders [oid] >> R.asks stopOrderId >>= \o ->
+        liftIO $ atomically $ writeTVar o (OrderID Nothing)
+
 
 -------------------------------------------------------------
 -- MARKET MAKING

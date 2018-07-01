@@ -20,7 +20,7 @@ import           BitMEXClient
     , makeRequest
     )
 import           Bot.Types
-import qualified Data.Text    as T (pack)
+import qualified Data.Text    as T (intercalate, pack)
 
 prepareOrder ::
        OrderID
@@ -31,7 +31,7 @@ prepareOrder ::
     -> LimitPx
     -> StopPx
     -> Qty
-    -> Maybe ExecutionInstruction
+    -> Maybe [ExecutionInstruction]
     -> Maybe ContingencyType
     -> Mex.Order
 prepareOrder (OrderID ordId) (ClientID clientId) (LinkID linkId) orderType side (LimitPx price) (StopPx stopPx) (Qty orderQty) executionType contingencyType = do
@@ -48,7 +48,7 @@ prepareOrder (OrderID ordId) (ClientID clientId) (LinkID linkId) orderType side 
             , Mex.orderStopPx = stopPx
             , Mex.orderOrderQty = orderQty
             , Mex.orderExecInst =
-                  map (T.pack . show) executionType
+                  map ((T.intercalate ",") . (map (T.pack . show))) executionType
             , Mex.orderContingencyType =
                   map (T.pack . show) contingencyType
             }
@@ -56,8 +56,8 @@ prepareOrder (OrderID ordId) (ClientID clientId) (LinkID linkId) orderType side 
         Nothing  -> order
         Just oid -> order {Mex.orderOrderId = oid}
 
-longPosStopLoss :: Mex.Order
-longPosStopLoss =
+longPosStopLoss :: Maybe Double -> Mex.Order
+longPosStopLoss stopPx =
     prepareOrder
         (OrderID Nothing)
         (ClientID Nothing)
@@ -65,13 +65,13 @@ longPosStopLoss =
         (Just Stop)
         (Just Sell)
         (LimitPx Nothing)
-        (StopPx (Just 1))
-        (Qty (Just 1))
-        (Just LastPrice)
+        (StopPx stopPx)
+        (Qty Nothing)
+        (Just [LastPrice, Close])
         (Nothing)
 
-shortPosStopLoss :: Mex.Order
-shortPosStopLoss =
+shortPosStopLoss :: Maybe Double -> Mex.Order
+shortPosStopLoss stopPx =
     prepareOrder
         (OrderID Nothing)
         (ClientID Nothing)
@@ -79,9 +79,9 @@ shortPosStopLoss =
         (Just Stop)
         (Just Buy)
         (LimitPx Nothing)
-        (StopPx (Just 999999))
-        (Qty (Just 1))
-        (Just LastPrice)
+        (StopPx stopPx)
+        (Qty Nothing)
+        (Just [LastPrice, Close])
         (Nothing)
 
 limitBuy :: Double -> Mex.Order

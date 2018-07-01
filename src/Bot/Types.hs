@@ -93,13 +93,13 @@ newtype PnLQueue = PnLQueue
     }
 
 data BotState = BotState
-    { connection :: !Connection
-    , riskManagerQueue  :: !RiskManagerQueue
-    , slwQueue          :: !StopLossWatcherQueue
-    , lobQueue          :: !LOBQueue
-    , pnlQueue          :: !PnLQueue
-    , positionSize      :: !(TVar Int)
-    , stopLossMap       :: !(TVar (HashMap Text (Text, Double)))
+    { connection       :: !Connection
+    , riskManagerQueue :: !RiskManagerQueue
+    , slwQueue         :: !StopLossWatcherQueue
+    , lobQueue         :: !LOBQueue
+    , pnlQueue         :: !PnLQueue
+    , positionSize     :: !(TVar Int)
+    , stopOrderId      :: !(TVar OrderID)
     }
 
 newtype BitMEXBot m a = BitMEXBot

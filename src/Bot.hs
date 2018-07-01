@@ -81,8 +81,6 @@ tradeLoop = do
         atomically $ readResponse $ unLobQueue lobQueue
     let RespOrderBook10 {asks = obAsks, bids = obBids} =
             head orderbookData
-    -- Setup placeholder stoploss orders
-    initStopLossOrders
     _ <-
         liftIO $
         forkIO $ forever $ riskManager botState config
@@ -103,11 +101,7 @@ initBot conn = do
     slwQueue <- liftIO $ atomically newTQueue
     pnlQueue <- liftIO $ atomically newTQueue
     positionSize <- liftIO $ atomically $ newTVar 0
-    stopLossMap <-
-        liftIO $
-        atomically $
-        newTVar (mempty :: HashMap Text (Text, Double))
-    stopLossTriggered <- liftIO $ atomically $ newTVar False
+    stopOrderId <- liftIO $ atomically $ newTVar (OrderID Nothing)
     let botState =
             BotState
             { connection = conn
@@ -117,7 +111,7 @@ initBot conn = do
             , slwQueue = StopLossWatcherQueue slwQueue
             , pnlQueue = PnLQueue pnlQueue
             , positionSize = positionSize
-            , stopLossMap = stopLossMap
+            , stopOrderId = stopOrderId
             }
     liftIO $ do
         sendMessage
