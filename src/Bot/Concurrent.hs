@@ -18,15 +18,21 @@ import           Control.Concurrent.STM.TQueue
     , writeTQueue
     )
 import           Control.Monad.STM             (STM, retry)
+import           Control.Monad.STM
+    ( STM
+    , atomically
+    , retry
+    )
 import           Data.Vector                   (head, (!?))
 
-processResponse :: BotState -> Maybe Response -> STM ()
+processResponse :: BotState -> Maybe Response -> IO ()
 processResponse (BotState {..}) msg = do
     case msg of
         Nothing -> return ()
         Just r ->
             case r of
                 OB10 t ->
+                    atomically $
                     writeTQueue
                         (unLobQueue lobQueue)
                         (Just (OB10 t))
@@ -36,6 +42,7 @@ processResponse (BotState {..}) msg = do
                     case currQty of
                         Nothing -> return ()
                         Just _ ->
+                            atomically $
                             writeTQueue
                                 (unRiskManagerQueue
                                      riskManagerQueue)
@@ -46,6 +53,7 @@ processResponse (BotState {..}) msg = do
                     case rpnl of
                         Nothing -> return ()
                         Just _ ->
+                            atomically $
                             writeTQueue
                                 (unPnlQueue pnlQueue)
                                 (Just marginResp)
@@ -55,6 +63,7 @@ processResponse (BotState {..}) msg = do
                         Just (RespExecution {triggered = text}) ->
                             case text of
                                 Just "StopOrderTriggered" ->
+                                    atomically $
                                     writeTQueue
                                         (unSLWQueue slwQueue)
                                         (Just execResp)

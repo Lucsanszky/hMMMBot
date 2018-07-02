@@ -130,5 +130,5 @@ initBot conn = do
         forkIO $
             forever $ do
                 msg <- getMessage conn config
-                atomically $ processResponse botState msg
+                processResponse botState msg
     R.runReaderT (runBot tradeLoop) botState
