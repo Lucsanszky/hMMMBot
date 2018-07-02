@@ -17,7 +17,7 @@ import           Control.Concurrent.STM.TQueue
     , readTQueue
     , writeTQueue
     )
-import           Control.Monad.STM             (STM, retry)
+import           Control.Concurrent.STM.TVar   (writeTVar)
 import           Control.Monad.STM
     ( STM
     , atomically
@@ -37,16 +37,25 @@ processResponse (BotState {..}) msg = do
                         (unLobQueue lobQueue)
                         (Just (OB10 t))
                 posResp@(P (TABLE {_data = positionData})) -> do
-                    let RespPosition {currentQty = currQty} =
-                            head positionData
-                    case currQty of
-                        Nothing -> return ()
-                        Just _ ->
-                            atomically $
-                            writeTQueue
-                                (unRiskManagerQueue
-                                     riskManagerQueue)
-                                (Just posResp)
+                    let RespPosition { currentQty = currQty
+                                     , openOrderBuyQty = buyQty
+                                     , openOrderSellQty = sellQty
+                                     } = head positionData
+                    when (currQty /= Nothing) $ do
+                        let Just q = map floor currQty
+                        (atomically $ writeTVar positionSize q)
+                        (atomically $
+                         writeTQueue
+                             (unRiskManagerQueue
+                                  riskManagerQueue)
+                             (Just posResp))
+                    when (buyQty /= Nothing) $ do
+                        let Just b = buyQty
+                        (atomically $ writeTVar openBuys b)
+                    when (sellQty /= Nothing) $ do
+                        let Just s = sellQty
+                        (atomically $ writeTVar openSells s)
+                    return ()
                 marginResp@(M (TABLE {_data = marginData})) -> do
                     let RespMargin {realisedPnl = rpnl} =
                             head marginData

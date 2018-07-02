@@ -5,14 +5,10 @@ module Bot.RiskManager
     ) where
 
 import           BasicPrelude                hiding (head)
-import qualified BasicPrelude                as BP (head)
 import qualified BitMEX                      as Mex
     ( Accept (..)
     , ContentType (..)
-    , MimeError (..)
     , MimeJSON (..)
-    , MimeResult (..)
-    , Order (..)
     , orderCancelAll
     )
 import           BitMEXClient
@@ -21,7 +17,6 @@ import           BitMEXClient
     , RespMargin (..)
     , RespPosition (..)
     , Response (..)
-    , Side (..)
     , TABLE (..)
     , makeRequest
     )
@@ -30,9 +25,7 @@ import           Bot.Math                    (roundPrice)
 import           Bot.OrderTemplates
 import           Bot.Types
 import           Bot.Util
-    ( amendOrder
-    , bulkAmendOrders
-    , cancelOrders
+    ( cancelOrders
     , cancelStopOrder
     , placeOrder
     , placeStopOrder
@@ -45,75 +38,80 @@ import           Control.Concurrent.STM.TVar
     )
 import qualified Control.Monad.Reader        as R (asks)
 import           Control.Monad.STM           (atomically)
-import qualified Data.HashMap.Strict         as HM
-    ( lookup
-    , toList
-    )
-import           Data.Text                   (Text)
 import           Data.Vector                 (head, (!?))
-import           Network.HTTP.Client
-    ( responseStatus
-    )
-import qualified Network.HTTP.Types.Status   as HTTP
-    ( Status (..)
-    )
 
 manageRisk :: Double -> Maybe Double -> BitMEXBot IO ()
+manageRisk 0 _ = do
+    OrderID oid <-
+        R.asks stopOrderId >>=
+        (liftIO . atomically . readTVar)
+    case oid of
+        Just i -> do
+            cancelOrders [i] >> R.asks stopOrderId >>= \o ->
+                liftIO $
+                atomically $ writeTVar o (OrderID Nothing)
+            pSize <- R.asks prevPosition
+            (liftIO $ atomically $ writeTVar pSize (floor 0))
+        Nothing -> return ()
+manageRisk _ Nothing = return ()
 manageRisk currQty avgCostPrice
     | currQty > 0 = do
         OrderID oid <-
             R.asks stopOrderId >>=
             (liftIO . atomically . readTVar)
         let roundedPrice =
-                map (roundPrice . (* 0.9970)) avgCostPrice
-            stopPx = (map (+ 1.5) roundedPrice)
-            newStopLoss = longPosStopLoss stopPx
+                map (roundPrice . (* 0.9925)) avgCostPrice
+            newStopLoss = longPosStopLoss roundedPrice
         case oid of
             Nothing -> do
                 placeStopOrder (placeOrder newStopLoss)
+                pSize <- R.asks prevPosition
+                liftIO $
+                    atomically $
+                    writeTVar pSize (floor currQty)
             Just _ -> do
                 currPos <-
-                    R.asks positionSize >>=
+                    R.asks prevPosition >>=
                     (liftIO . atomically . readTVar)
                 if currPos < 0
                     then do
                         cancelStopOrder (OrderID oid)
                         placeStopOrder
                             (placeOrder newStopLoss)
+                        pSize <- R.asks prevPosition
+                        liftIO $
+                            atomically $
+                            writeTVar pSize (floor currQty)
                     else return ()
     | currQty < 0 = do
         OrderID oid <-
             R.asks stopOrderId >>=
             (liftIO . atomically . readTVar)
         let roundedPrice =
-                map (roundPrice . (* 1.0030)) avgCostPrice
-            stopPx = (map (flip (-) 1.5) roundedPrice)
-            newStopLoss = shortPosStopLoss stopPx
+                map (roundPrice . (* 1.0075)) avgCostPrice
+            newStopLoss = shortPosStopLoss roundedPrice
         case oid of
             Nothing -> do
                 placeStopOrder (placeOrder newStopLoss)
+                pSize <- R.asks prevPosition
+                liftIO $
+                    atomically $
+                    writeTVar pSize (floor currQty)
             Just _ -> do
                 currPos <-
-                    R.asks positionSize >>=
+                    R.asks prevPosition >>=
                     (liftIO . atomically . readTVar)
                 if currPos > 0
                     then do
                         cancelStopOrder (OrderID oid)
                         placeStopOrder
                             (placeOrder newStopLoss)
-                    else return ()
-    | otherwise = do
-        OrderID oid <-
-            R.asks stopOrderId >>=
-            (liftIO . atomically . readTVar)
-        case oid of
-            Just i ->
-                cancelOrders [i] >> R.asks stopOrderId >>= \o ->
-                    liftIO $
-                    atomically $
-                    writeTVar o (OrderID Nothing)
-            Nothing -> return ()
-manageRisk _ Nothing = return ()
+                        pSize <- R.asks prevPosition
+                        liftIO $
+                            atomically $
+                            writeTVar pSize (floor currQty)
+                    else do
+                        return ()
 
 riskManager :: BotState -> BitMEXWrapperConfig -> IO ()
 riskManager botState@BotState {..} config = do
@@ -126,31 +124,13 @@ riskManager botState@BotState {..} config = do
                              , currentQty = currQty
                              , avgCostPrice = avgPrice
                              } = head positionData
-            -- asshole way to check if both values are "Just"
-            -- while keeping the second value
-            -- TODO: simplify, since we can
             case qty >> currQty of
-                Nothing -> do
-                    case currQty of
-                        Nothing -> return ()
-                        Just cq ->
-                            unWrapBotWith
-                                (updatePositionSize cq)
-                                botState
-                                config
+                Nothing -> return ()
                 Just q -> do
-                    case avgPrice of
-                        Just _ ->
-                            unWrapBotWith
-                                (manageRisk q avgPrice >>
-                                 updatePositionSize q)
-                                botState
-                                config
-                        Nothing ->
-                            unWrapBotWith
-                                (updatePositionSize q)
-                                botState
-                                config
+                    (unWrapBotWith
+                         (manageRisk q avgPrice)
+                         botState
+                         config)
         _ -> do
             return ()
 
@@ -183,8 +163,6 @@ pnlTracker q =
 
 restart :: BitMEXBot IO ()
 restart
-    -- Immediately empty the stopLossMap
-    -- so other threads won't attempt to make orders
  = do
     (R.asks stopOrderId >>= \m ->
          liftIO $ atomically $ writeTVar m (OrderID Nothing)) >>
@@ -195,7 +173,5 @@ restart
                   (Mex.Accept Mex.MimeJSON))) >>
         return ()
 
-updatePositionSize :: Double -> BitMEXBot IO ()
-updatePositionSize x =
-    R.asks positionSize >>= \p ->
-        (liftIO . atomically) $ writeTVar p (floor x)
+-- update :: TVar Int -> Double -> IO ()
+-- update v x = (liftIO . atomically) $ writeTVar v (floor x)

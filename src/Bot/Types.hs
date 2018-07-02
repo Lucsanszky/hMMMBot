@@ -16,6 +16,7 @@ module Bot.Types
     -- , StopLossTriggered(..)
     , PnLQueue(..)
     , RiskManagerQueue(..)
+    , OpenOrderQueue(..)
     , StopLossWatcherQueue(..)
     ) where
 
@@ -84,6 +85,10 @@ newtype RiskManagerQueue = RiskManagerQueue
     { unRiskManagerQueue :: TQueue (Maybe Response)
     }
 
+newtype OpenOrderQueue = OpenOrderQueue
+    { unOpenOrderQueue :: TQueue (Maybe Response)
+    }
+
 newtype StopLossWatcherQueue = StopLossWatcherQueue
     { unSLWQueue :: (TQueue (Maybe Response))
     }
@@ -95,10 +100,14 @@ newtype PnLQueue = PnLQueue
 data BotState = BotState
     { connection       :: !Connection
     , riskManagerQueue :: !RiskManagerQueue
+    , openOrderQueue   :: !OpenOrderQueue
     , slwQueue         :: !StopLossWatcherQueue
     , lobQueue         :: !LOBQueue
     , pnlQueue         :: !PnLQueue
-    , positionSize     :: !(TVar Int)
+    , prevPosition     :: !(TVar Int)
+    , positionSize     :: !(TVar Integer)
+    , openBuys         :: !(TVar Integer)
+    , openSells        :: !(TVar Integer)
     , stopOrderId      :: !(TVar OrderID)
     }
 

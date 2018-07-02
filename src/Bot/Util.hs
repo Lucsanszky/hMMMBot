@@ -179,8 +179,7 @@ cancelStopOrder (OrderID (Just oid)) = do
 -- MARKET MAKING
 -------------------------------------------------------------
 makeMarket ::
-       Double
-    -> Double
+    [Mex.Order]
     -> BitMEXBot IO (Mex.MimeResult [Mex.Order])
-makeMarket ask bid = do
-    placeBulkOrder [limitBuy bid, limitSell ask]
+makeMarket orders =
+    placeBulkOrder orders
