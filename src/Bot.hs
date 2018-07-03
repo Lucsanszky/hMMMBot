@@ -47,7 +47,7 @@ trade (bestAsk, bestBid) = do
     BotState {..} <- R.ask
     OB10 (TABLE {_data = orderbookData}) <-
         liftIO $
-            atomically $ readResponse $ unLobQueue lobQueue
+        atomically $ readResponse $ unLobQueue lobQueue
     let RespOrderBook10 {asks = obAsks, bids = obBids} =
             head orderbookData
         newBestAsk = head $ head obAsks
@@ -58,23 +58,59 @@ trade (bestAsk, bestBid) = do
             trade (bestAsk, bestBid)
         True -> do
             buys' <- liftIO $ atomically $ readTVar openBuys
-            sells' <- liftIO $ atomically $ readTVar openSells
-            let buys = if size > 0 then size + buys' else buys'
-            let sells = if size < 0 then (abs size) + sells' else sells'
-            if (buys < _MAX_POSITION_ || sells < _MAX_POSITION_)
-               then do
-                  let orders = if (buys < _MAX_POSITION_ && sells < _MAX_POSITION_)
-                                  then [limitSell newBestAsk, limitBuy newBestBid]
-                                  else if (buys < _MAX_POSITION_)
-                                          then [limitBuy newBestBid]
-                                          else [limitSell newBestAsk]
-                  Mex.MimeResult {Mex.mimeResultResponse = resp} <-
-                      makeMarket orders
-                  let HTTP.Status {statusCode = code} =
-                          responseStatus resp
-                  if code == 200
-                      then trade (newBestAsk, newBestBid)
-                      else fail "order didn't go through"
+            sells' <-
+                liftIO $ atomically $ readTVar openSells
+            let buys =
+                    if size > 0
+                        then size + buys'
+                        else buys'
+            let sells =
+                    if size < 0
+                        then (abs size) + sells'
+                        else sells'
+            if (buys < _MAX_POSITION_ ||
+                sells < _MAX_POSITION_)
+                then do
+                    let (orders, newBuyQty, newSellQty) =
+                            if (buys < _MAX_POSITION_ &&
+                                sells < _MAX_POSITION_)
+                                then ( [ limitSell
+                                             newBestAsk
+                                       , limitBuy newBestBid
+                                       ]
+                                     , buys + _MAX_POSITION_
+                                     , sells +
+                                       _MAX_POSITION_)
+                                else if (buys <
+                                         _MAX_POSITION_)
+                                         then ( [ limitBuy
+                                                      newBestBid
+                                                ]
+                                              , buys +
+                                                _MAX_POSITION_
+                                              , sells)
+                                         else ( [ limitSell
+                                                      newBestAsk
+                                                ]
+                                              , buys
+                                              , sells +
+                                                _MAX_POSITION_)
+                    Mex.MimeResult {Mex.mimeResultResponse = resp} <-
+                        makeMarket orders
+                    let HTTP.Status {statusCode = code} =
+                            responseStatus resp
+                    if code == 200
+                        then do
+                            liftIO $
+                                atomically $
+                                updateVar openBuys newBuyQty
+                            liftIO $
+                                atomically $
+                                updateVar
+                                    openSells
+                                    newSellQty
+                            trade (newBestAsk, newBestBid)
+                        else fail "order didn't go through"
                 else do
                     trade (newBestAsk, newBestBid)
 

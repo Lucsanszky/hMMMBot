@@ -1,6 +1,7 @@
 module Bot.Concurrent
     ( processResponse
     , readResponse
+    , updateVar
     ) where
 
 import           BasicPrelude                  hiding (head)
