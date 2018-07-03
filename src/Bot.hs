@@ -25,9 +25,6 @@ import           Data.Aeson
     , toJSON
     )
 import           Data.ByteString.Char8         (pack)
-import qualified Data.HashMap.Strict           as HM
-    ( lookup
-    )
 import           Data.Time.Clock.POSIX
     ( getPOSIXTime
     )
@@ -39,7 +36,7 @@ import qualified Network.HTTP.Types.Status     as HTTP
     ( Status (..)
     )
 
-_MAX_POSITION_ :: Int
+_MAX_POSITION_ :: Integer
 _MAX_POSITION_ = 42
 
 _ORDER_SIZE_ :: Int
@@ -64,11 +61,11 @@ trade (bestAsk, bestBid) = do
             sells' <- liftIO $ atomically $ readTVar openSells
             let buys = if size > 0 then size + buys' else buys'
             let sells = if size < 0 then (abs size) + sells' else sells'
-            if (buys < 42 || sells < 42)
+            if (buys < _MAX_POSITION_ || sells < _MAX_POSITION_)
                then do
-                  let orders = if (buys < 42 && sells < 42)
+                  let orders = if (buys < _MAX_POSITION_ && sells < _MAX_POSITION_)
                                   then [limitSell newBestAsk, limitBuy newBestBid]
-                                  else if (buys < 42)
+                                  else if (buys < _MAX_POSITION_)
                                           then [limitBuy newBestBid]
                                           else [limitSell newBestAsk]
                   Mex.MimeResult {Mex.mimeResultResponse = resp} <-
@@ -110,7 +107,7 @@ initBot conn = do
     openOrderQueue <- liftIO $ atomically newTQueue
     slwQueue <- liftIO $ atomically newTQueue
     pnlQueue <- liftIO $ atomically newTQueue
-    prevPosition <- liftIO $ atomically $ newTVar 0
+    prevPosition <- liftIO $ atomically $ newTVar None
     positionSize <- liftIO $ atomically $ newTVar 0
     openBuys <- liftIO $ atomically $ newTVar 0
     openSells <- liftIO $ atomically $ newTVar 0

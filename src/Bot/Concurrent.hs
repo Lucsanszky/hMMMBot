@@ -17,7 +17,11 @@ import           Control.Concurrent.STM.TQueue
     , readTQueue
     , writeTQueue
     )
-import           Control.Concurrent.STM.TVar   (writeTVar)
+import           Control.Concurrent.STM.TVar
+    ( TVar
+    , readTVar
+    , writeTVar
+    )
 import           Control.Monad.STM
     ( STM
     , atomically
@@ -43,18 +47,19 @@ processResponse (BotState {..}) msg = do
                                      } = head positionData
                     when (currQty /= Nothing) $ do
                         let Just q = map floor currQty
-                        (atomically $ writeTVar positionSize q)
-                        (atomically $
-                         writeTQueue
-                             (unRiskManagerQueue
-                                  riskManagerQueue)
-                             (Just posResp))
+                        atomically $
+                            updateVar positionSize q
+                        atomically $
+                            writeTQueue
+                                (unRiskManagerQueue
+                                     riskManagerQueue)
+                                (Just posResp)
                     when (buyQty /= Nothing) $ do
                         let Just b = buyQty
-                        (atomically $ writeTVar openBuys b)
+                        atomically $ updateVar openBuys b
                     when (sellQty /= Nothing) $ do
                         let Just s = sellQty
-                        (atomically $ writeTVar openSells s)
+                        atomically $ updateVar openSells s
                     return ()
                 marginResp@(M (TABLE {_data = marginData})) -> do
                     let RespMargin {realisedPnl = rpnl} =
@@ -85,3 +90,10 @@ readResponse q = do
     case r of
         Nothing -> retry
         Just x  -> return x
+
+updateVar :: (Eq a) => TVar a -> a -> STM ()
+updateVar var newVal = do
+    currVal <- readTVar var
+    if currVal == newVal
+        then return ()
+        else writeTVar var newVal

@@ -10,6 +10,7 @@ module Bot.Types
     , PositionQueue(..)
     , LOBQueue(..)
     , OrderQueue(..)
+    , PositionType(..)
     , ExecutionQueue(..)
     , MarginQueue(..)
     , MessageQueue(..)
@@ -97,6 +98,9 @@ newtype PnLQueue = PnLQueue
     { unPnlQueue :: (TQueue (Maybe Response))
     }
 
+data PositionType = Long | Short | None
+    deriving (Eq, Show)
+
 data BotState = BotState
     { connection       :: !Connection
     , riskManagerQueue :: !RiskManagerQueue
@@ -104,7 +108,7 @@ data BotState = BotState
     , slwQueue         :: !StopLossWatcherQueue
     , lobQueue         :: !LOBQueue
     , pnlQueue         :: !PnLQueue
-    , prevPosition     :: !(TVar Int)
+    , prevPosition     :: !(TVar PositionType)
     , positionSize     :: !(TVar Integer)
     , openBuys         :: !(TVar Integer)
     , openSells        :: !(TVar Integer)
