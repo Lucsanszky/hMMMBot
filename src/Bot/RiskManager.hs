@@ -49,15 +49,12 @@ manageStopLoss newStopLoss newPos = do
     prevPos <-
         R.asks prevPosition >>=
         (liftIO . atomically . readTVar)
-    when (oid /= Nothing && prevPos /= newPos) $ do
-        cancelStopOrder (OrderID oid)
-        placeStopOrder (placeOrder newStopLoss)
-        pSize <- R.asks prevPosition
-        liftIO $ atomically $ writeTVar pSize newPos
     when (oid == Nothing || prevPos /= newPos) $ do
-        placeStopOrder (placeOrder newStopLoss)
-        pSize <- R.asks prevPosition
-        liftIO $ atomically $ writeTVar pSize newPos
+      when (oid /= Nothing && prevPos /= newPos) $
+          cancelStopOrder (OrderID oid)
+      placeStopOrder (placeOrder newStopLoss)
+      pSize <- R.asks prevPosition
+      liftIO $ atomically $ writeTVar pSize newPos
     return ()
 
 manageRisk :: Double -> Maybe Double -> BitMEXBot IO ()
@@ -67,11 +64,9 @@ manageRisk 0 _ = do
         (liftIO . atomically . readTVar)
     case oid of
         Just i -> do
-            cancelOrders [i] >> R.asks stopOrderId >>= \o ->
-                liftIO $
-                atomically $ writeTVar o (OrderID Nothing)
+            cancelStopOrder (OrderID oid)
             pSize <- R.asks prevPosition
-            (liftIO $ atomically $ writeTVar pSize None)
+            liftIO $ atomically $ writeTVar pSize None
         Nothing -> return ()
 manageRisk _ Nothing = return ()
 manageRisk currQty avgCostPrice
