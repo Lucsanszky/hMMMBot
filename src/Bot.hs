@@ -2,18 +2,20 @@ module Bot
     ( initBot
     ) where
 
-import           BasicPrelude                  hiding (head)
-import qualified BitMEX                        as Mex
+import           BasicPrelude                   hiding
+    ( head
+    )
+import qualified BitMEX                         as Mex
 import           BitMEXClient
 import           Bot.Concurrent
 import           Bot.OrderTemplates
 import           Bot.RiskManager
 import           Bot.Types
 import           Bot.Util
-import           Control.Concurrent            (forkIO)
-import           Control.Concurrent.STM.TQueue
+import           Control.Concurrent             (forkIO)
+import           Control.Concurrent.STM.TBQueue
 import           Control.Concurrent.STM.TVar
-import qualified Control.Monad.Reader          as R
+import qualified Control.Monad.Reader           as R
     ( ask
     , asks
     , lift
@@ -24,15 +26,15 @@ import           Data.Aeson
     ( Value (String)
     , toJSON
     )
-import           Data.ByteString.Char8         (pack)
+import           Data.ByteString.Char8          (pack)
 import           Data.Time.Clock.POSIX
     ( getPOSIXTime
     )
-import           Data.Vector                   (head)
+import           Data.Vector                    (head)
 import           Network.HTTP.Client
     ( responseStatus
     )
-import qualified Network.HTTP.Types.Status     as HTTP
+import qualified Network.HTTP.Types.Status      as HTTP
     ( Status (..)
     )
 
@@ -138,23 +140,22 @@ initBot conn = do
     pub <- R.asks publicKey
     time <- liftIO $ makeTimestamp <$> getPOSIXTime
     sig <- sign (pack ("GET" ++ "/realtime" ++ show time))
-    lobQueue <- liftIO $ atomically newTQueue
-    riskManagerQueue <- liftIO $ atomically newTQueue
-    openOrderQueue <- liftIO $ atomically newTQueue
-    slwQueue <- liftIO $ atomically newTQueue
-    pnlQueue <- liftIO $ atomically newTQueue
+    lobQueue <- liftIO $ atomically $ newTBQueue 1
+    riskManagerQueue <- liftIO $ atomically $ newTBQueue 1
+    slwQueue <- liftIO $ atomically $ newTBQueue 1
+    pnlQueue <- liftIO $ atomically $ newTBQueue 1
     prevPosition <- liftIO $ atomically $ newTVar None
     positionSize <- liftIO $ atomically $ newTVar 0
     openBuys <- liftIO $ atomically $ newTVar 0
     openSells <- liftIO $ atomically $ newTVar 0
-    stopOrderId <- liftIO $ atomically $ newTVar (OrderID Nothing)
+    stopOrderId <-
+        liftIO $ atomically $ newTVar (OrderID Nothing)
     let botState =
             BotState
             { connection = conn
             , lobQueue = LOBQueue lobQueue
             , riskManagerQueue =
                   RiskManagerQueue riskManagerQueue
-            , openOrderQueue = OpenOrderQueue openOrderQueue
             , slwQueue = StopLossWatcherQueue slwQueue
             , pnlQueue = PnLQueue pnlQueue
             , prevPosition = prevPosition

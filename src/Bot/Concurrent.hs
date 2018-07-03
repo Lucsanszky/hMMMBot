@@ -4,7 +4,9 @@ module Bot.Concurrent
     , updateVar
     ) where
 
-import           BasicPrelude                  hiding (head)
+import           BasicPrelude                   hiding
+    ( head
+    )
 import           BitMEXClient
     ( RespExecution (..)
     , RespMargin (..)
@@ -13,10 +15,10 @@ import           BitMEXClient
     , TABLE (..)
     )
 import           Bot.Types
-import           Control.Concurrent.STM.TQueue
-    ( TQueue
-    , readTQueue
-    , writeTQueue
+import           Control.Concurrent.STM.TBQueue
+    ( TBQueue
+    , readTBQueue
+    , writeTBQueue
     )
 import           Control.Concurrent.STM.TVar
     ( TVar
@@ -28,7 +30,7 @@ import           Control.Monad.STM
     , atomically
     , retry
     )
-import           Data.Vector                   (head, (!?))
+import           Data.Vector                    (head, (!?))
 
 processResponse :: BotState -> Maybe Response -> IO ()
 processResponse (BotState {..}) msg = do
@@ -38,7 +40,7 @@ processResponse (BotState {..}) msg = do
             case r of
                 OB10 t ->
                     atomically $
-                    writeTQueue
+                    writeTBQueue
                         (unLobQueue lobQueue)
                         (Just (OB10 t))
                 posResp@(P (TABLE {_data = positionData})) -> do
@@ -51,7 +53,7 @@ processResponse (BotState {..}) msg = do
                         atomically $
                             updateVar positionSize q
                         atomically $
-                            writeTQueue
+                            writeTBQueue
                                 (unRiskManagerQueue
                                      riskManagerQueue)
                                 (Just posResp)
@@ -69,7 +71,7 @@ processResponse (BotState {..}) msg = do
                         Nothing -> return ()
                         Just _ ->
                             atomically $
-                            writeTQueue
+                            writeTBQueue
                                 (unPnlQueue pnlQueue)
                                 (Just marginResp)
                 execResp@(Exe (TABLE {_data = execData})) -> do
@@ -79,15 +81,15 @@ processResponse (BotState {..}) msg = do
                             case text of
                                 Just "StopOrderTriggered" ->
                                     atomically $
-                                    writeTQueue
+                                    writeTBQueue
                                         (unSLWQueue slwQueue)
                                         (Just execResp)
                                 _ -> return ()
                 _ -> return ()
 
-readResponse :: TQueue (Maybe Response) -> STM Response
+readResponse :: TBQueue (Maybe Response) -> STM Response
 readResponse q = do
-    r <- readTQueue q
+    r <- readTBQueue q
     case r of
         Nothing -> retry
         Just x  -> return x

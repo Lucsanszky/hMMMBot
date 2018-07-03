@@ -7,17 +7,15 @@ module Bot.Types
     , ClientID(..)
     , LinkID(..)
     , OrderID(..)
-    , PositionQueue(..)
+    -- , PositionQueue(..)
     , LOBQueue(..)
-    , OrderQueue(..)
+    -- , OrderQueue(..)
     , PositionType(..)
-    , ExecutionQueue(..)
-    , MarginQueue(..)
-    , MessageQueue(..)
-    -- , StopLossTriggered(..)
+    -- , ExecutionQueue(..)
+    -- , MarginQueue(..)
+    -- , MessageQueue(..)
     , PnLQueue(..)
     , RiskManagerQueue(..)
-    , OpenOrderQueue(..)
     , StopLossWatcherQueue(..)
     ) where
 
@@ -26,13 +24,13 @@ import           BitMEXClient
     ( BitMEXReader
     , Response
     )
-import           Control.Concurrent.STM.TQueue (TQueue)
-import           Control.Concurrent.STM.TVar   (TVar)
+import           Control.Concurrent.STM.TBQueue (TBQueue)
+import           Control.Concurrent.STM.TVar    (TVar)
 import           Control.Monad.Reader
     ( MonadReader
     , ReaderT
     )
-import           Network.WebSockets            (Connection)
+import           Network.WebSockets             (Connection)
 
 newtype StopPx =
     StopPx (Maybe Double)
@@ -58,44 +56,40 @@ newtype OrderID =
     OrderID (Maybe Text)
     deriving (Eq, Ord, Show)
 
-newtype PositionQueue = PositionQueue
-    { unPositionQueue :: TQueue (Maybe Response)
-    }
+-- newtype PositionQueue = PositionQueue
+--     { unPositionQueue :: TQueue (Maybe Response)
+--     }
 
 newtype LOBQueue = LOBQueue
-    { unLobQueue :: TQueue (Maybe Response)
+    { unLobQueue :: TBQueue (Maybe Response)
     }
 
-newtype OrderQueue = OrderQueue
-    { unOrderQueue :: (TQueue (Maybe Response))
-    }
+-- newtype OrderQueue = OrderQueue
+--     { unOrderQueue :: (TQueue (Maybe Response))
+--     }
 
-newtype MarginQueue = MarginQueue
-    { unMarginQueue :: (TQueue (Maybe Response))
-    }
+-- newtype MarginQueue = MarginQueue
+--     { unMarginQueue :: (TQueue (Maybe Response))
+--     }
 
-newtype ExecutionQueue = ExecutionQueue
-    { unExecutionQueue :: (TQueue (Maybe Response))
-    }
+-- newtype ExecutionQueue = ExecutionQueue
+--     { unExecutionQueue :: (TQueue (Maybe Response))
+--     }
 
-newtype MessageQueue = MessageQueue
-    { unMessageQueue :: (TQueue (Maybe Response))
-    }
+-- newtype MessageQueue = MessageQueue
+--     { unMessageQueue :: (TQueue (Maybe Response))
+--     }
 
 newtype RiskManagerQueue = RiskManagerQueue
-    { unRiskManagerQueue :: TQueue (Maybe Response)
-    }
-
-newtype OpenOrderQueue = OpenOrderQueue
-    { unOpenOrderQueue :: TQueue (Maybe Response)
+    { unRiskManagerQueue :: TBQueue (Maybe Response)
     }
 
 newtype StopLossWatcherQueue = StopLossWatcherQueue
-    { unSLWQueue :: (TQueue (Maybe Response))
+    { unSLWQueue :: (TBQueue (Maybe Response))
     }
 
 newtype PnLQueue = PnLQueue
-    { unPnlQueue :: (TQueue (Maybe Response))
+    { unPnlQueue :: (TBQueue (Maybe Response))
     }
 
 data PositionType = Long | Short | None
@@ -104,7 +98,6 @@ data PositionType = Long | Short | None
 data BotState = BotState
     { connection       :: !Connection
     , riskManagerQueue :: !RiskManagerQueue
-    , openOrderQueue   :: !OpenOrderQueue
     , slwQueue         :: !StopLossWatcherQueue
     , lobQueue         :: !LOBQueue
     , pnlQueue         :: !PnLQueue
