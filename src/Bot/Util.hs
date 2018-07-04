@@ -5,6 +5,8 @@ module Bot.Util
     , placeOrder
     , amendStopOrder
     , cancelStopOrder
+    , kill
+    , restart
     , placeStopOrder
     , amendOrder
     , cancelOrders
@@ -22,10 +24,10 @@ import qualified BitMEX                      as Mex
     , MimeResult (..)
     , Order (..)
     , Symbol (..)
-    , mkOrder
     , orderAmend
     , orderAmendBulk
     , orderCancel
+    , orderCancelAll
     , orderNew
     , orderNewBulk
     , _setBodyLBS
@@ -33,10 +35,6 @@ import qualified BitMEX                      as Mex
 import           BitMEXClient
     ( BitMEXReader (..)
     , BitMEXWrapperConfig
-    , ContingencyType
-    , ExecutionInstruction (..)
-    , OrderType
-    , OrderType (..)
     , Side (..)
     , Symbol (..)
     , makeRequest
@@ -46,18 +44,19 @@ import           Bot.Types
     ( BitMEXBot (..)
     , BotState (..)
     , OrderID (..)
+    , PositionType (..)
     )
 import           Control.Concurrent.STM.TVar
     ( readTVar
     , writeTVar
     )
 import qualified Control.Monad.Reader        as R
-    ( asks
+    ( ask
+    , asks
     , runReaderT
     )
 import           Control.Monad.STM           (atomically)
 import           Data.Aeson                  (encode)
-import qualified Data.HashMap.Strict         as HM (insert)
 import qualified Data.Text                   as T (pack)
 import           Network.HTTP.Client
     ( responseStatus
@@ -149,7 +148,9 @@ placeStopOrder ::
 placeStopOrder order = do
     Mex.MimeResult {Mex.mimeResult = res} <- order
     case res of
-        Left (Mex.MimeError {mimeError = s}) -> fail s
+        Left (Mex.MimeError {mimeError = s}) -> do
+            kill
+            fail s
         Right (Mex.Order {orderOrderId = oid}) ->
             R.asks stopOrderId >>= \o ->
                 liftIO $
@@ -168,12 +169,42 @@ amendStopOrder oid stopPx = do
             responseStatus resp
     if code == 200
         then return ()
-        else fail "amending failed"
+        else do
+            kill
+            fail "amending failed"
 
 cancelStopOrder :: OrderID -> BitMEXBot IO ()
 cancelStopOrder (OrderID (Just oid)) = do
     cancelOrders [oid] >> R.asks stopOrderId >>= \o ->
         liftIO $ atomically $ writeTVar o (OrderID Nothing)
+cancelStopOrder _ = return ()
+
+kill :: BitMEXBot IO ()
+kill = do
+    pSize <-
+        R.asks positionSize >>=
+        (liftIO . atomically . readTVar)
+    restart
+    let close =
+            if pSize < 0
+                then closePosition Buy
+                else closePosition Sell
+    placeStopOrder (placeOrder close)
+
+restart :: BitMEXBot IO ()
+restart = do
+    BotState {..} <- R.ask
+    BitMEXBot . lift $
+        makeRequest
+            (Mex.orderCancelAll
+                 (Mex.ContentType Mex.MimeJSON)
+                 (Mex.Accept Mex.MimeJSON))
+    liftIO $ do
+        atomically $ writeTVar stopOrderId (OrderID Nothing)
+        atomically $ writeTVar positionSize 0
+        atomically $ writeTVar prevPosition None
+        atomically $ writeTVar openBuys 0
+        atomically $ writeTVar openSells 0
 
 -------------------------------------------------------------
 -- MARKET MAKING

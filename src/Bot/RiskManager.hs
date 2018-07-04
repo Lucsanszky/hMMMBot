@@ -29,8 +29,10 @@ import           Bot.Types
 import           Bot.Util
     ( cancelOrders
     , cancelStopOrder
+    , kill
     , placeOrder
     , placeStopOrder
+    , restart
     , unWrapBotWith
     )
 import           Control.Concurrent.STM.TVar
@@ -130,30 +132,3 @@ pnlTracker q =
         let RespMargin {realisedPnl = rpnl} =
                 head marginData
         print rpnl
-
-kill :: BitMEXBot IO ()
-kill = do
-    pSize <-
-        R.asks positionSize >>=
-        (liftIO . atomically . readTVar)
-    restart
-    let close =
-            if pSize < 0
-                then closePosition Buy
-                else closePosition Sell
-    placeStopOrder (placeOrder close)
-
-restart :: BitMEXBot IO ()
-restart = do
-    BotState {..} <- R.ask
-    BitMEXBot . lift $
-        makeRequest
-            (Mex.orderCancelAll
-                 (Mex.ContentType Mex.MimeJSON)
-                 (Mex.Accept Mex.MimeJSON))
-    liftIO $ do
-        atomically $ writeTVar stopOrderId (OrderID Nothing)
-        atomically $ writeTVar positionSize 0
-        atomically $ writeTVar prevPosition None
-        atomically $ writeTVar openBuys 0
-        atomically $ writeTVar openSells 0

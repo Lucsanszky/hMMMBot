@@ -114,7 +114,9 @@ trade (bestAsk, bestBid) = do
                                     openSells
                                     newSellQty
                             trade (newBestAsk, newBestBid)
-                        else fail "order didn't go through"
+                        else do
+                            kill
+                            fail "order didn't go through"
                 else do
                     trade (newBestAsk, newBestBid)
 
