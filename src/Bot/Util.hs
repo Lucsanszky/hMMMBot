@@ -39,6 +39,7 @@ import           BitMEXClient
     , Symbol (..)
     , makeRequest
     )
+import           Bot.Concurrent
 import           Bot.OrderTemplates
 import           Bot.Types
     ( BitMEXBot (..)
@@ -209,8 +210,56 @@ restart = do
 -------------------------------------------------------------
 -- MARKET MAKING
 -------------------------------------------------------------
+_MAX_POSITION_ :: Integer
+_MAX_POSITION_ = 42
+
 makeMarket ::
-    [Mex.Order]
-    -> BitMEXBot IO (Mex.MimeResult [Mex.Order])
-makeMarket orders =
-    placeBulkOrder orders
+       Double
+    -> Double
+    -> BitMEXBot IO ()
+makeMarket ask bid = do
+    BotState {..} <- R.ask
+    size <- liftIO $ atomically $ readTVar positionSize
+    buys' <- liftIO $ atomically $ readTVar openBuys
+    sells' <- liftIO $ atomically $ readTVar openSells
+    let buys =
+            if size > 0
+                then size + buys'
+                else buys'
+    let sells =
+            if size < 0
+                then (abs size) + sells'
+                else sells'
+    if (buys < _MAX_POSITION_ || sells < _MAX_POSITION_)
+        then do
+            let (orders, newBuyQty, newSellQty) =
+                    if (buys < _MAX_POSITION_ &&
+                        sells < _MAX_POSITION_)
+                        then ( [limitSell ask, limitBuy bid]
+                             , buys + _MAX_POSITION_
+                             , sells + _MAX_POSITION_)
+                        else if (buys < _MAX_POSITION_)
+                                 then ( [limitBuy bid]
+                                      , buys +
+                                        _MAX_POSITION_
+                                      , sells)
+                                 else ( [limitSell ask]
+                                      , buys
+                                      , sells +
+                                        _MAX_POSITION_)
+            Mex.MimeResult {Mex.mimeResultResponse = resp} <-
+                placeBulkOrder orders
+            let HTTP.Status {statusCode = code} =
+                    responseStatus resp
+            if code == 200
+                then do
+                    liftIO $
+                        atomically $
+                        updateVar openBuys newBuyQty
+                    liftIO $
+                        atomically $
+                        updateVar openSells newSellQty
+                else do
+                    kill
+                    fail "order didn't go through"
+        else return ()
