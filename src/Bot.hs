@@ -13,6 +13,8 @@ import           Bot.RiskManager
 import           Bot.Types
 import           Bot.Util
 import           Control.Concurrent             (forkIO)
+import           Control.Concurrent.Async       (async)
+import qualified Control.Concurrent.Async       as A (link)
 import           Control.Concurrent.STM.TBQueue
 import           Control.Concurrent.STM.TVar
 import qualified Control.Monad.Reader           as R
@@ -125,13 +127,14 @@ tradeLoop = do
         atomically $ readResponse $ unLobQueue lobQueue
     let RespOrderBook10 {asks = obAsks, bids = obBids} =
             head orderbookData
-    _ <-
-        liftIO $
-        forkIO $ forever $ riskManager botState config
-    _ <-
-        liftIO $
-        forkIO $ forever $ stopLossWatcher botState config
-    _ <- liftIO $ forkIO $ forever $ pnlTracker pnlQueue
+    liftIO $ do
+        risk <-
+            async $ forever $ riskManager botState config
+        slw <-
+            async $
+            forever $ stopLossWatcher botState config
+        pnl <- async $ forever $ pnlTracker pnlQueue
+        mapM_ A.link [risk, slw, pnl]
     trade (head $ head obAsks, head $ head obBids)
 
 initBot :: BitMEXApp IO ()
@@ -178,7 +181,7 @@ initBot conn = do
              , Position
              , Margin
              ] :: [Topic Symbol])
-        forkIO $
+        async $
             forever $ do
                 msg <- getMessage conn config
                 processResponse botState msg

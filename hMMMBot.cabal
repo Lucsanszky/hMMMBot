@@ -79,6 +79,7 @@ executable hMMMBot
                      , basic-prelude
                      , bytestring >= 0.10
                      , bloodhound
+                     , async
                      , katip-elasticsearch
                      , katip
                      , containers >= 0.5
