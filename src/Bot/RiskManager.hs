@@ -36,7 +36,10 @@ import           Control.Concurrent.STM.TVar
     ( readTVar
     , writeTVar
     )
-import qualified Control.Monad.Reader        as R (asks)
+import qualified Control.Monad.Reader        as R
+    ( ask
+    , asks
+    )
 import           Control.Monad.STM           (atomically)
 import           Data.Vector                 (head, (!?))
 
@@ -50,11 +53,11 @@ manageStopLoss newStopLoss newPos = do
         R.asks prevPosition >>=
         (liftIO . atomically . readTVar)
     when (oid == Nothing || prevPos /= newPos) $ do
-      when (oid /= Nothing && prevPos /= newPos) $
-          cancelStopOrder (OrderID oid)
-      placeStopOrder (placeOrder newStopLoss)
-      pSize <- R.asks prevPosition
-      liftIO $ atomically $ writeTVar pSize newPos
+        when (oid /= Nothing && prevPos /= newPos) $
+            cancelStopOrder (OrderID oid)
+        placeStopOrder (placeOrder newStopLoss)
+        pSize <- R.asks prevPosition
+        liftIO $ atomically $ writeTVar pSize newPos
     return ()
 
 manageRisk :: Double -> Maybe Double -> BitMEXBot IO ()
@@ -80,6 +83,7 @@ manageRisk currQty avgCostPrice
                 map (roundPrice . (* 1.0075)) avgCostPrice
             newStopLoss = shortPosStopLoss roundedPrice
         manageStopLoss newStopLoss Short
+    | otherwise = return ()
 
 riskManager :: BotState -> BitMEXWrapperConfig -> IO ()
 riskManager botState@BotState {..} config = do
@@ -109,8 +113,7 @@ stopLossWatcher botState@BotState {..} config = do
         Exe (TABLE {_data = execData}) -> do
             case execData !? 0 of
                 Nothing -> return ()
-                Just (RespExecution { triggered = text
-                                    }) ->
+                Just (RespExecution {triggered = text}) ->
                     case text of
                         Just "StopOrderTriggered" ->
                             unWrapBotWith
@@ -129,11 +132,15 @@ pnlTracker q =
 
 restart :: BitMEXBot IO ()
 restart = do
-    (R.asks stopOrderId >>= \m ->
-         liftIO $ atomically $ writeTVar m (OrderID Nothing)) >>
-        (BitMEXBot . lift $
-         makeRequest
-             (Mex.orderCancelAll
-                  (Mex.ContentType Mex.MimeJSON)
-                  (Mex.Accept Mex.MimeJSON))) >>
-        return ()
+    BotState {..} <- R.ask
+    BitMEXBot . lift $
+        makeRequest
+            (Mex.orderCancelAll
+                 (Mex.ContentType Mex.MimeJSON)
+                 (Mex.Accept Mex.MimeJSON))
+    liftIO $ do
+        atomically $ writeTVar stopOrderId (OrderID Nothing)
+        atomically $ writeTVar positionSize 0
+        atomically $ writeTVar prevPosition None
+        atomically $ writeTVar openBuys 0
+        atomically $ writeTVar openSells 0
