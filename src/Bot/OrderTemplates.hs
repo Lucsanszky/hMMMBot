@@ -5,6 +5,7 @@ module Bot.OrderTemplates
     , limitBuy
     , limitSell
     , orderWithId
+    , closePosition
     ) where
 
 import           BasicPrelude
@@ -82,6 +83,20 @@ shortPosStopLoss stopPx =
         (StopPx stopPx)
         (Qty Nothing)
         (Just [LastPrice, Close])
+        (Nothing)
+
+closePosition :: Side -> Mex.Order
+closePosition side =
+    prepareOrder
+        (OrderID Nothing)
+        (ClientID Nothing)
+        (LinkID Nothing)
+        (Just Market)
+        (Just side)
+        (LimitPx Nothing)
+        (StopPx Nothing)
+        (Qty Nothing)
+        (Just [Close])
         (Nothing)
 
 limitBuy :: Double -> Mex.Order

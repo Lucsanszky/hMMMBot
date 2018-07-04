@@ -18,6 +18,7 @@ import           BitMEXClient
     , RespMargin (..)
     , RespPosition (..)
     , Response (..)
+    , Side (..)
     , TABLE (..)
     , makeRequest
     )
@@ -129,6 +130,18 @@ pnlTracker q =
         let RespMargin {realisedPnl = rpnl} =
                 head marginData
         print rpnl
+
+kill :: BitMEXBot IO ()
+kill = do
+    pSize <-
+        R.asks positionSize >>=
+        (liftIO . atomically . readTVar)
+    restart
+    let close =
+            if pSize < 0
+                then closePosition Buy
+                else closePosition Sell
+    placeStopOrder (placeOrder close)
 
 restart :: BitMEXBot IO ()
 restart = do
