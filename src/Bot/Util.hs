@@ -1,5 +1,6 @@
 module Bot.Util
-    ( makeMarket
+    ( makeMarketPassive
+    , makeMarketAggressive
     , prepareOrder
     , placeBulkOrder
     , placeOrder
@@ -218,6 +219,8 @@ makeMarket ::
     -> Double
     -> BitMEXBot IO ()
 makeMarket ask bid = do
+makeMarketPassive :: Double -> Double -> BitMEXBot IO ()
+makeMarketPassive ask bid = do
     BotState {..} <- R.ask
     size <- liftIO $ atomically $ readTVar positionSize
     buys' <- liftIO $ atomically $ readTVar openBuys

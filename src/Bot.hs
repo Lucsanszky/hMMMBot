@@ -8,6 +8,7 @@ import           BasicPrelude                   hiding
 import qualified BitMEX                         as Mex
 import           BitMEXClient
 import           Bot.Concurrent
+import           Bot.Math
 import           Bot.OrderTemplates
 import           Bot.RiskManager
 import           Bot.Types
@@ -49,6 +50,7 @@ _ORDER_SIZE_ = 21
 trade :: (Double, Double) -> BitMEXBot IO ()
 trade (bestAsk, bestBid) = do
     BotState {..} <- R.ask
+    available <- liftIO $ atomically $ readTVar availableBalance
     OB10 (TABLE {_data = orderbookData}) <-
         liftIO $
         atomically $ readResponse $ unLobQueue lobQueue
@@ -60,8 +62,13 @@ trade (bestAsk, bestBid) = do
         False -> do
             trade (bestAsk, bestBid)
         True -> do
-            makeMarket newBestAsk newBestBid
-            trade (newBestAsk, newBestBid)
+            if (convert XBt_to_XBT (fromIntegral available)) > convert USD_to_XBT newBestAsk * 21
+               then do
+                  makeMarketPassive newBestAsk newBestBid
+                  trade (newBestAsk, newBestBid)
+               else do
+                  kill
+                  fail "not enough funds"
 
 tradeLoop :: BitMEXBot IO ()
 tradeLoop = do
