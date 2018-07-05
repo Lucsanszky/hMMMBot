@@ -4,6 +4,7 @@ module Bot.Types
     , StopPx(..)
     , LimitPx(..)
     , Qty(..)
+    , Rule (..)
     , ClientID(..)
     , LinkID(..)
     , OrderID(..)
@@ -94,6 +95,8 @@ newtype PnLQueue = PnLQueue
 
 data PositionType = Long | Short | None
     deriving (Eq, Show)
+
+data Rule = XBt_to_XBT | USD_to_XBT
 
 data BotState = BotState
     { connection       :: !Connection
