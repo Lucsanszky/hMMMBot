@@ -214,11 +214,9 @@ restart = do
 _MAX_POSITION_ :: Integer
 _MAX_POSITION_ = 42
 
-makeMarket ::
-       Double
-    -> Double
-    -> BitMEXBot IO ()
-makeMarket ask bid = do
+makeMarketAggressive :: Double -> Double -> BitMEXBot IO ()
+makeMarketAggressive ask bid = undefined
+
 makeMarketPassive :: Double -> Double -> BitMEXBot IO ()
 makeMarketPassive ask bid = do
     BotState {..} <- R.ask
@@ -239,17 +237,15 @@ makeMarketPassive ask bid = do
                     if (buys < _MAX_POSITION_ &&
                         sells < _MAX_POSITION_)
                         then ( [limitSell ask, limitBuy bid]
-                             , buys + _MAX_POSITION_
-                             , sells + _MAX_POSITION_)
+                             , buys' + 21
+                             , sells' + 21)
                         else if (buys < _MAX_POSITION_)
                                  then ( [limitBuy bid]
-                                      , buys +
-                                        _MAX_POSITION_
-                                      , sells)
+                                      , buys' + 21
+                                      , sells')
                                  else ( [limitSell ask]
-                                      , buys
-                                      , sells +
-                                        _MAX_POSITION_)
+                                      , buys'
+                                      , sells' + 21)
             Mex.MimeResult {Mex.mimeResultResponse = resp} <-
                 placeBulkOrder orders
             let HTTP.Status {statusCode = code} =
