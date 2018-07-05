@@ -65,15 +65,20 @@ processResponse (BotState {..}) msg = do
                         atomically $ updateVar openSells s
                     return ()
                 marginResp@(M (TABLE {_data = marginData})) -> do
-                    let RespMargin {realisedPnl = rpnl} =
+                    let RespMargin {realisedPnl = rpnl
+                                   , availableMargin = ab
+                                   , walletBalance = wb
+                                   } =
                             head marginData
-                    case rpnl of
-                        Nothing -> return ()
-                        Just _ ->
-                            atomically $
-                            writeTBQueue
-                                (unPnlQueue pnlQueue)
-                                (Just marginResp)
+                    when (rpnl /= Nothing) $ do
+                        let Just p = rpnl
+                        atomically $ writeTVar realPnl p
+                    when (ab /= Nothing) $ do
+                        let Just b = ab
+                        atomically $ writeTVar availableBalance b
+                    when (wb /= Nothing) $ do
+                        let Just w = wb
+                        atomically $ writeTVar walletBalance w
                 execResp@(Exe (TABLE {_data = execData})) -> do
                     case execData !? 0 of
                         Nothing -> return ()

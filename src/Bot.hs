@@ -78,7 +78,7 @@ tradeLoop = do
         slw <-
             async $
             forever $ stopLossWatcher botState config
-        pnl <- async $ forever $ pnlTracker pnlQueue
+        pnl <- async $ forever $ pnlTracker botState config
         mapM_ A.link [risk, slw, pnl]
     trade (head $ head obAsks, head $ head obBids)
 
@@ -88,12 +88,21 @@ initBot conn = do
     pub <- R.asks publicKey
     time <- liftIO $ makeTimestamp <$> getPOSIXTime
     sig <- sign (pack ("GET" ++ "/realtime" ++ show time))
+    Mex.MimeResult {Mex.mimeResult = res } <- makeRequest $ Mex.userGetMargin (Mex.Accept Mex.MimeJSON)
+    let Right (Mex.Margin { Mex.marginMarginBalance = Just mb
+                          , Mex.marginWalletBalance = Just wb
+                          , Mex.marginAvailableMargin = Just ab
+                          }) = res
     lobQueue <- liftIO $ atomically $ newTBQueue 1
     riskManagerQueue <- liftIO $ atomically $ newTBQueue 1
     slwQueue <- liftIO $ atomically $ newTBQueue 1
     pnlQueue <- liftIO $ atomically $ newTBQueue 1
     prevPosition <- liftIO $ atomically $ newTVar None
     positionSize <- liftIO $ atomically $ newTVar 0
+    realPnl <- liftIO $ atomically $ newTVar 0
+    startingBalance <- liftIO $ atomically $ newTVar $ floor mb
+    availableBalance <- liftIO $ atomically $ newTVar $ floor ab
+    walletBalance <- liftIO $ atomically $ newTVar $ floor wb
     openBuys <- liftIO $ atomically $ newTVar 0
     openSells <- liftIO $ atomically $ newTVar 0
     stopOrderId <-
@@ -108,6 +117,10 @@ initBot conn = do
             , pnlQueue = PnLQueue pnlQueue
             , prevPosition = prevPosition
             , positionSize = positionSize
+            , realPnl = realPnl
+            , startingBalance = startingBalance
+            , availableBalance = availableBalance
+            , walletBalance = walletBalance
             , openBuys = openBuys
             , openSells = openSells
             , stopOrderId = stopOrderId

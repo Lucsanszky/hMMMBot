@@ -226,7 +226,7 @@ makeMarket ask bid = do
             if size > 0
                 then size + buys'
                 else buys'
-    let sells =
+        sells =
             if size < 0
                 then (abs size) + sells'
                 else sells'

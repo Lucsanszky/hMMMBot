@@ -101,6 +101,10 @@ data BotState = BotState
     , slwQueue         :: !StopLossWatcherQueue
     , lobQueue         :: !LOBQueue
     , pnlQueue         :: !PnLQueue
+    , realPnl          :: !(TVar Integer)
+    , startingBalance  :: !(TVar Integer)
+    , availableBalance :: !(TVar Integer)
+    , walletBalance    :: !(TVar Integer)
     , prevPosition     :: !(TVar PositionType)
     , positionSize     :: !(TVar Integer)
     , openBuys         :: !(TVar Integer)
