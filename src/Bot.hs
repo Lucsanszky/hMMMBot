@@ -4,6 +4,7 @@ module Bot
 
 import           BasicPrelude                   hiding
     ( head
+    , last
     )
 import qualified BitMEX                         as Mex
 import           BitMEXClient
@@ -33,7 +34,7 @@ import           Data.ByteString.Char8          (pack)
 import           Data.Time.Clock.POSIX
     ( getPOSIXTime
     )
-import           Data.Vector                    (head)
+import           Data.Vector                    (head, last)
 import           Network.HTTP.Client
     ( responseStatus
     )
@@ -41,16 +42,17 @@ import qualified Network.HTTP.Types.Status      as HTTP
     ( Status (..)
     )
 
-_MAX_POSITION_ :: Integer
-_MAX_POSITION_ = 42
+_PASSIVE_LIMIT_ :: Integer
+_PASSIVE_LIMIT_ = 42
 
-_ORDER_SIZE_ :: Int
-_ORDER_SIZE_ = 21
+_AGGRESSIVE_LIMIT_ :: Integer
+_AGGRESSIVE_LIMIT_ = 84
 
 trade :: (Double, Double) -> BitMEXBot IO ()
 trade (bestAsk, bestBid) = do
     BotState {..} <- R.ask
-    available <- liftIO $ atomically $ readTVar availableBalance
+    available <-
+        liftIO $ atomically $ readTVar availableBalance
     OB10 (TABLE {_data = orderbookData}) <-
         liftIO $
         atomically $ readResponse $ unLobQueue lobQueue
@@ -58,17 +60,61 @@ trade (bestAsk, bestBid) = do
             head orderbookData
         newBestAsk = head $ head obAsks
         newBestBid = head $ head obBids
+        sellVol = (foldl' (+) 0 . map last) $ obAsks
+        buyVol = (foldl' (+) 0 . map last) $ obBids
+        imbalance =
+            (abs (sellVol - buyVol)) / sellVol + buyVol
     case newBestAsk /= bestAsk || newBestBid /= bestBid of
         False -> do
             trade (bestAsk, bestBid)
         True -> do
-            if (convert XBt_to_XBT (fromIntegral available)) > convert USD_to_XBT newBestAsk * 21
-               then do
-                  makeMarketPassive newBestAsk newBestBid
-                  trade (newBestAsk, newBestBid)
-               else do
-                  kill
-                  fail "not enough funds"
+            if (convert XBt_to_XBT (fromIntegral available)) >
+               convert USD_to_XBT newBestAsk * 21
+                then if imbalance > 0.5 &&
+                        (newBestAsk - newBestBid > 1.0)
+                         then do
+                             let avg =
+                                     (newBestAsk +
+                                      newBestBid) /
+                                     2
+                             if (buyVol > sellVol)
+                                 then do
+                                     makeMarket
+                                         _AGGRESSIVE_LIMIT_
+                                         (fromIntegral $
+                                          ceiling avg)
+                                         ((fromIntegral $
+                                           ceiling avg) -
+                                          0.5)
+                                     trade
+                                         ( (fromIntegral $
+                                            ceiling avg)
+                                         , (fromIntegral $
+                                            ceiling avg) -
+                                           0.5)
+                                 else do
+                                     makeMarket
+                                         _AGGRESSIVE_LIMIT_
+                                         ((fromIntegral $
+                                           floor avg) +
+                                          0.5)
+                                         (fromIntegral $
+                                          floor avg)
+                                     trade
+                                         ( (fromIntegral $
+                                            floor avg) +
+                                           0.5
+                                         , (fromIntegral $
+                                            floor avg))
+                         else do
+                             makeMarket
+                                 _PASSIVE_LIMIT_
+                                 newBestAsk
+                                 newBestBid
+                             trade (newBestAsk, newBestBid)
+                else do
+                    kill
+                    fail "not enough funds"
 
 tradeLoop :: BitMEXBot IO ()
 tradeLoop = do
@@ -95,7 +141,9 @@ initBot conn = do
     pub <- R.asks publicKey
     time <- liftIO $ makeTimestamp <$> getPOSIXTime
     sig <- sign (pack ("GET" ++ "/realtime" ++ show time))
-    Mex.MimeResult {Mex.mimeResult = res } <- makeRequest $ Mex.userGetMargin (Mex.Accept Mex.MimeJSON)
+    Mex.MimeResult {Mex.mimeResult = res} <-
+        makeRequest $
+        Mex.userGetMargin (Mex.Accept Mex.MimeJSON)
     let Right (Mex.Margin { Mex.marginMarginBalance = Just mb
                           , Mex.marginWalletBalance = Just wb
                           , Mex.marginAvailableMargin = Just ab
@@ -107,9 +155,12 @@ initBot conn = do
     prevPosition <- liftIO $ atomically $ newTVar None
     positionSize <- liftIO $ atomically $ newTVar 0
     realPnl <- liftIO $ atomically $ newTVar 0
-    startingBalance <- liftIO $ atomically $ newTVar $ floor mb
-    availableBalance <- liftIO $ atomically $ newTVar $ floor ab
-    walletBalance <- liftIO $ atomically $ newTVar $ floor wb
+    startingBalance <-
+        liftIO $ atomically $ newTVar $ floor mb
+    availableBalance <-
+        liftIO $ atomically $ newTVar $ floor ab
+    walletBalance <-
+        liftIO $ atomically $ newTVar $ floor wb
     openBuys <- liftIO $ atomically $ newTVar 0
     openSells <- liftIO $ atomically $ newTVar 0
     stopOrderId <-

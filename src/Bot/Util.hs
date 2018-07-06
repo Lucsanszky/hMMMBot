@@ -1,6 +1,5 @@
 module Bot.Util
-    ( makeMarketPassive
-    , makeMarketAggressive
+    ( makeMarket
     , prepareOrder
     , placeBulkOrder
     , placeOrder
@@ -211,14 +210,8 @@ restart = do
 -------------------------------------------------------------
 -- MARKET MAKING
 -------------------------------------------------------------
-_MAX_POSITION_ :: Integer
-_MAX_POSITION_ = 42
-
-makeMarketAggressive :: Double -> Double -> BitMEXBot IO ()
-makeMarketAggressive ask bid = undefined
-
-makeMarketPassive :: Double -> Double -> BitMEXBot IO ()
-makeMarketPassive ask bid = do
+makeMarket :: Integer -> Double -> Double -> BitMEXBot IO ()
+makeMarket limit ask bid = do
     BotState {..} <- R.ask
     size <- liftIO $ atomically $ readTVar positionSize
     buys' <- liftIO $ atomically $ readTVar openBuys
@@ -231,15 +224,14 @@ makeMarketPassive ask bid = do
             if size < 0
                 then (abs size) + sells'
                 else sells'
-    if (buys < _MAX_POSITION_ || sells < _MAX_POSITION_)
+    if (buys < limit || sells < limit)
         then do
             let (orders, newBuyQty, newSellQty) =
-                    if (buys < _MAX_POSITION_ &&
-                        sells < _MAX_POSITION_)
+                    if (buys < limit && sells < limit)
                         then ( [limitSell ask, limitBuy bid]
                              , buys' + 21
                              , sells' + 21)
-                        else if (buys < _MAX_POSITION_)
+                        else if (buys < limit)
                                  then ( [limitBuy bid]
                                       , buys' + 21
                                       , sells')
