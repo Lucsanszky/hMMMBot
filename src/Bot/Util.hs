@@ -150,8 +150,7 @@ placeStopOrder order = do
     Mex.MimeResult {Mex.mimeResult = res} <- order
     case res of
         Left (Mex.MimeError {mimeError = s}) -> do
-            kill
-            fail s
+            kill s
         Right (Mex.Order {orderOrderId = oid}) ->
             R.asks stopOrderId >>= \o ->
                 liftIO $
@@ -171,8 +170,7 @@ amendStopOrder oid stopPx = do
     if code == 200
         then return ()
         else do
-            kill
-            fail "amending failed"
+            kill "amending failed"
 
 cancelStopOrder :: OrderID -> BitMEXBot IO ()
 cancelStopOrder (OrderID (Just oid)) = do
@@ -180,8 +178,8 @@ cancelStopOrder (OrderID (Just oid)) = do
         liftIO $ atomically $ writeTVar o (OrderID Nothing)
 cancelStopOrder _ = return ()
 
-kill :: BitMEXBot IO ()
-kill = do
+kill :: String -> BitMEXBot IO ()
+kill msg = do
     pSize <-
         R.asks positionSize >>=
         (liftIO . atomically . readTVar)
@@ -191,6 +189,7 @@ kill = do
                 then closePosition Buy
                 else closePosition Sell
     placeStopOrder (placeOrder close)
+    fail msg
 
 restart :: BitMEXBot IO ()
 restart = do
@@ -251,6 +250,5 @@ makeMarket limit ask bid = do
                         atomically $
                         updateVar openSells newSellQty
                 else do
-                    kill
-                    fail "order didn't go through"
+                    kill "order didn't go through"
         else return ()

@@ -134,7 +134,6 @@ pnlTracker  botState@BotState {..} config = do
         then do
            print initial
            print current
-           unWrapBotWith kill botState config
-           fail "lost too much"
+           unWrapBotWith (kill "lost too much") botState config
         else
            return ()

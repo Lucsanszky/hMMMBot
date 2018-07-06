@@ -113,8 +113,7 @@ trade (bestAsk, bestBid) = do
                                  newBestBid
                              trade (newBestAsk, newBestBid)
                 else do
-                    kill
-                    fail "not enough funds"
+                    kill "not enough funds"
 
 tradeLoop :: BitMEXBot IO ()
 tradeLoop = do
