@@ -80,6 +80,7 @@ executable hMMMBot
                      , bytestring >= 0.10
                      , bloodhound
                      , async
+                     , microlens >= 0.4
                      , katip-elasticsearch
                      , katip
                      , containers >= 0.5

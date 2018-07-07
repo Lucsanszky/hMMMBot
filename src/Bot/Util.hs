@@ -33,6 +33,8 @@ import qualified BitMEX                      as Mex
     , orderCancelAll
     , orderNew
     , orderNewBulk
+    , orderOrdStatusL
+    , orderSideL
     , positionUpdateLeverage
     , unLeverage
     , _setBodyLBS
@@ -65,6 +67,7 @@ import qualified Control.Monad.Reader        as R
 import           Control.Monad.STM           (atomically)
 import           Data.Aeson                  (encode)
 import qualified Data.Text                   as T (pack)
+import           Lens.Micro
 import           Network.HTTP.Client
     ( responseStatus
     )
@@ -237,6 +240,15 @@ updateLeverage sym lev = do
 -------------------------------------------------------------
 -- MARKET MAKING
 -------------------------------------------------------------
+incrementQty ::
+       Maybe Text -> [(Maybe Text, Maybe Text)] -> Integer
+incrementQty side =
+    sum .
+    map (\(stat, side') ->
+             if (stat == Just "New" && side == side')
+                 then 21
+                 else 0)
+
 makeMarket :: Integer -> Double -> Double -> BitMEXBot IO ()
 makeMarket limit ask bid = do
     BotState {..} <- R.ask
@@ -253,30 +265,37 @@ makeMarket limit ask bid = do
                 else sells'
     if (buys < limit || sells < limit)
         then do
-            let (orders, newBuyQty, newSellQty) =
+            let orders =
                     if (buys < limit && sells < limit)
-                        then ( [limitSell ask, limitBuy bid]
-                             , buys' + 21
-                             , sells' + 21)
+                        then [limitSell ask, limitBuy bid]
                         else if (buys < limit)
-                                 then ( [limitBuy bid]
-                                      , buys' + 21
-                                      , sells')
-                                 else ( [limitSell ask]
-                                      , buys'
-                                      , sells' + 21)
-            Mex.MimeResult {Mex.mimeResultResponse = resp} <-
-                placeBulkOrder orders
+                                 then [limitBuy bid]
+                                 else [limitSell ask]
+            Mex.MimeResult { Mex.mimeResultResponse = resp
+                           , Mex.mimeResult = res
+                           } <- placeBulkOrder orders
             let HTTP.Status {statusCode = code} =
                     responseStatus resp
             if code == 200
                 then do
+                    let Right orders = res
+                        pairs =
+                            map
+                                (\o ->
+                                     ( o ^.
+                                       Mex.orderOrdStatusL
+                                     , o ^. Mex.orderSideL))
+                                orders
                     liftIO $
                         atomically $
-                        updateVar openBuys newBuyQty
+                        updateVar openBuys $
+                        buys' +
+                        incrementQty (Just "Buy") pairs
                     liftIO $
                         atomically $
-                        updateVar openSells newSellQty
+                        updateVar openSells $
+                        sells' +
+                        incrementQty (Just "Sell") pairs
                 else if code == 503
                          then do
                              liftIO $ threadDelay 500000
