@@ -47,6 +47,7 @@ import           Bot.Types
     , OrderID (..)
     , PositionType (..)
     )
+import           Control.Concurrent          (threadDelay)
 import           Control.Concurrent.STM.TVar
     ( readTVar
     , writeTVar
@@ -249,6 +250,9 @@ makeMarket limit ask bid = do
                     liftIO $
                         atomically $
                         updateVar openSells newSellQty
-                else do
-                    kill "order didn't go through"
+                else if code == 503
+                         then do
+                             liftIO $ threadDelay 500000
+                             return ()
+                         else kill "order didn't go through"
         else return ()
