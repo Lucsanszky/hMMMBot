@@ -99,7 +99,7 @@ newtype PnLQueue = PnLQueue
 data PositionType = Long | Short | None
     deriving (Eq, Show)
 
-data Rule = XBt_to_XBT | USD_to_XBT
+data Rule = XBt_to_XBT | USD_to_XBT | XBT_to_USD
 
 data BotState = BotState
     { connection       :: !Connection

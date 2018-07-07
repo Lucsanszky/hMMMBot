@@ -130,7 +130,7 @@ pnlTracker :: BotState -> BitMEXWrapperConfig -> IO ()
 pnlTracker botState@BotState {..} config = do
     prev <- liftIO $ atomically $ readTVar prevBalance
     current <- liftIO $ atomically $ readTVar walletBalance
-    if fromIntegral current / fromIntegral prev <= 0.85
+    if fromIntegral current / fromIntegral prev <= 0.75
         then do
             unWrapBotWith
                 (kill "lost too much")

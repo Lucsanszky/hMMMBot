@@ -2,6 +2,9 @@ module Bot.Util
     ( makeMarket
     , prepareOrder
     , placeBulkOrder
+    , getAggressiveLimit
+    , getPassiveLimit
+    , getOrderSize
     , updateLeverage
     , placeOrder
     , amendStopOrder
@@ -47,12 +50,14 @@ import           BitMEXClient
     , makeRequest
     )
 import           Bot.Concurrent
+import           Bot.Math
 import           Bot.OrderTemplates
 import           Bot.Types
     ( BitMEXBot (..)
     , BotState (..)
     , OrderID (..)
     , PositionType (..)
+    , Rule (..)
     )
 import           Control.Concurrent          (threadDelay)
 import           Control.Concurrent.STM.TVar
@@ -240,17 +245,43 @@ updateLeverage sym lev = do
 -------------------------------------------------------------
 -- MARKET MAKING
 -------------------------------------------------------------
+getPassiveLimit :: Double -> Double -> Integer
+getPassiveLimit price balance =
+    floor $
+    (convert XBT_to_USD price) *
+    (convert XBt_to_XBT $ balance * 0.075)
+
+getAggressiveLimit :: Double -> Double -> Integer
+getAggressiveLimit price balance =
+    floor $
+    (convert XBT_to_USD price) *
+    (convert XBt_to_XBT $ balance * 0.15)
+
+getOrderSize :: Double -> Double -> Integer
+getOrderSize price balance =
+    floor $
+    (convert XBT_to_USD price) *
+    (convert XBt_to_XBT $ balance * 0.02)
+
 incrementQty ::
-       Maybe Text -> [(Maybe Text, Maybe Text)] -> Integer
-incrementQty side =
+       Integer
+    -> Maybe Text
+    -> [(Maybe Text, Maybe Text)]
+    -> Integer
+incrementQty orderSize side =
     sum .
     map (\(stat, side') ->
              if (stat == Just "New" && side == side')
-                 then 21
+                 then orderSize
                  else 0)
 
-makeMarket :: Integer -> Double -> Double -> BitMEXBot IO ()
-makeMarket limit ask bid = do
+makeMarket ::
+       Integer
+    -> Integer
+    -> Double
+    -> Double
+    -> BitMEXBot IO ()
+makeMarket limit orderSize ask bid = do
     BotState {..} <- R.ask
     size <- liftIO $ atomically $ readTVar positionSize
     buys' <- liftIO $ atomically $ readTVar openBuys
@@ -267,10 +298,24 @@ makeMarket limit ask bid = do
         then do
             let orders =
                     if (buys < limit && sells < limit)
-                        then [limitSell ask, limitBuy bid]
+                        then [ limitSell
+                                   (fromIntegral orderSize)
+                                   ask
+                             , limitBuy
+                                   (fromIntegral orderSize)
+                                   bid
+                             ]
                         else if (buys < limit)
-                                 then [limitBuy bid]
-                                 else [limitSell ask]
+                                 then [ limitBuy
+                                            (fromIntegral
+                                                 orderSize)
+                                            bid
+                                      ]
+                                 else [ limitSell
+                                            (fromIntegral
+                                                 orderSize)
+                                            ask
+                                      ]
             Mex.MimeResult { Mex.mimeResultResponse = resp
                            , Mex.mimeResult = res
                            } <- placeBulkOrder orders
@@ -290,12 +335,18 @@ makeMarket limit ask bid = do
                         atomically $
                         updateVar openBuys $
                         buys' +
-                        incrementQty (Just "Buy") pairs
+                        incrementQty
+                            orderSize
+                            (Just "Buy")
+                            pairs
                     liftIO $
                         atomically $
                         updateVar openSells $
                         sells' +
-                        incrementQty (Just "Sell") pairs
+                        incrementQty
+                            orderSize
+                            (Just "Sell")
+                            pairs
                 else if code == 503
                          then do
                              liftIO $ threadDelay 500000

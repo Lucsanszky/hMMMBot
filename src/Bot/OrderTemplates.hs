@@ -99,8 +99,8 @@ closePosition side =
         (Just [Close])
         (Nothing)
 
-limitBuy :: Double -> Mex.Order
-limitBuy bid =
+limitBuy :: Double -> Double -> Mex.Order
+limitBuy orderSize bid =
     prepareOrder
         (OrderID Nothing)
         (ClientID Nothing)
@@ -109,12 +109,12 @@ limitBuy bid =
         (Just Buy)
         (LimitPx (Just bid))
         (StopPx Nothing)
-        (Qty (Just 21))
+        (Qty (Just orderSize))
         (Just [ParticipateDoNotInitiate])
         Nothing
 
-limitSell :: Double -> Mex.Order
-limitSell ask =
+limitSell :: Double -> Double -> Mex.Order
+limitSell orderSize ask =
     prepareOrder
         (OrderID Nothing)
         (ClientID Nothing)
@@ -123,7 +123,7 @@ limitSell ask =
         (Just Sell)
         (LimitPx (Just ask))
         (StopPx Nothing)
-        (Qty (Just 21))
+        (Qty (Just orderSize))
         (Just [ParticipateDoNotInitiate])
         Nothing
 

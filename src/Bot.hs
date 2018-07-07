@@ -43,17 +43,12 @@ import qualified Network.HTTP.Types.Status      as HTTP
     ( Status (..)
     )
 
-_PASSIVE_LIMIT_ :: Integer
-_PASSIVE_LIMIT_ = 42
-
-_AGGRESSIVE_LIMIT_ :: Integer
-_AGGRESSIVE_LIMIT_ = 84
-
 trade :: (Double, Double) -> BitMEXBot IO ()
 trade (bestAsk, bestBid) = do
     BotState {..} <- R.ask
     available <-
         liftIO $ atomically $ readTVar availableBalance
+    total <- liftIO $ atomically $ readTVar walletBalance
     OB10 (TABLE {_data = orderbookData}) <-
         liftIO $
         atomically $ readResponse $ unLobQueue lobQueue
@@ -65,12 +60,16 @@ trade (bestAsk, bestBid) = do
         buyVol = (foldl' (+) 0 . map last) $ obBids
         imbalance =
             (abs (sellVol - buyVol)) / sellVol + buyVol
+        orderSize = getOrderSize newBestAsk $ fromIntegral total
+        lev = Mex.unLeverage leverage
+        aggressiveLimit = getAggressiveLimit newBestAsk $ fromIntegral total / lev
+        passiveLimit = getPassiveLimit newBestAsk $ fromIntegral total / lev
     case newBestAsk /= bestAsk || newBestBid /= bestBid of
         False -> do
             trade (bestAsk, bestBid)
         True -> do
             if (convert XBt_to_XBT (fromIntegral available)) >
-               convert USD_to_XBT newBestAsk * 21
+               convert USD_to_XBT newBestAsk * (fromIntegral orderSize) * lev
                 then if imbalance > 0.5 &&
                         (newBestAsk - newBestBid > 1.0)
                          then do
@@ -81,7 +80,8 @@ trade (bestAsk, bestBid) = do
                              if (buyVol > sellVol)
                                  then do
                                      makeMarket
-                                         _AGGRESSIVE_LIMIT_
+                                         aggressiveLimit
+                                         orderSize
                                          (fromIntegral $
                                           ceiling avg)
                                          ((fromIntegral $
@@ -95,7 +95,8 @@ trade (bestAsk, bestBid) = do
                                            0.5)
                                  else do
                                      makeMarket
-                                         _AGGRESSIVE_LIMIT_
+                                         aggressiveLimit
+                                         orderSize
                                          ((fromIntegral $
                                            floor avg) +
                                           0.5)
@@ -109,7 +110,8 @@ trade (bestAsk, bestBid) = do
                                             floor avg))
                          else do
                              makeMarket
-                                 _PASSIVE_LIMIT_
+                                 passiveLimit
+                                 orderSize
                                  newBestAsk
                                  newBestBid
                              trade (newBestAsk, newBestBid)
