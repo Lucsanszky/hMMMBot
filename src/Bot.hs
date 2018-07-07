@@ -144,8 +144,7 @@ initBot leverage conn = do
     Mex.MimeResult {Mex.mimeResult = res} <-
         makeRequest $
         Mex.userGetMargin (Mex.Accept Mex.MimeJSON)
-    let Right (Mex.Margin { Mex.marginMarginBalance = Just mb
-                          , Mex.marginWalletBalance = Just wb
+    let Right (Mex.Margin { Mex.marginWalletBalance = Just wb
                           , Mex.marginAvailableMargin = Just ab
                           }) = res
     lobQueue <- liftIO $ atomically $ newTBQueue 1
@@ -155,8 +154,7 @@ initBot leverage conn = do
     prevPosition <- liftIO $ atomically $ newTVar None
     positionSize <- liftIO $ atomically $ newTVar 0
     realPnl <- liftIO $ atomically $ newTVar 0
-    startingBalance <-
-        liftIO $ atomically $ newTVar $ floor mb
+    prevBalance <- liftIO $ atomically $ newTVar $ floor wb
     availableBalance <-
         liftIO $ atomically $ newTVar $ floor ab
     walletBalance <-
@@ -176,7 +174,7 @@ initBot leverage conn = do
             , prevPosition = prevPosition
             , positionSize = positionSize
             , realPnl = realPnl
-            , startingBalance = startingBalance
+            , prevBalance = prevBalance
             , availableBalance = availableBalance
             , walletBalance = walletBalance
             , openBuys = openBuys

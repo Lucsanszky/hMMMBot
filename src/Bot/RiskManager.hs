@@ -127,13 +127,18 @@ stopLossWatcher botState@BotState {..} config = do
         _ -> return ()
 
 pnlTracker :: BotState -> BitMEXWrapperConfig -> IO ()
-pnlTracker  botState@BotState {..} config = do
-    initial <- liftIO $ atomically $ readTVar startingBalance
+pnlTracker botState@BotState {..} config = do
+    prev <- liftIO $ atomically $ readTVar prevBalance
     current <- liftIO $ atomically $ readTVar walletBalance
-    if (fromIntegral initial) * 0.85 >= (fromIntegral current)
+    if fromIntegral current / fromIntegral prev <= 0.85
         then do
-           print initial
-           print current
-           unWrapBotWith (kill "lost too much") botState config
-        else
-           return ()
+            unWrapBotWith
+                (kill "lost too much")
+                botState
+                config
+        else do
+            when (prev /= current) $ do
+                liftIO $
+                    atomically $
+                    writeTVar prevBalance current
+            return ()
