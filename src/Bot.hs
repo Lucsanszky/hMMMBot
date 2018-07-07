@@ -28,6 +28,7 @@ import qualified Control.Monad.Reader           as R
 import           Control.Monad.STM
 import           Data.Aeson
     ( Value (String)
+    , encode
     , toJSON
     )
 import           Data.ByteString.Char8          (pack)
@@ -134,8 +135,8 @@ tradeLoop = do
         mapM_ A.link [risk, slw, pnl]
     trade (head $ head obAsks, head $ head obBids)
 
-initBot :: BitMEXApp IO ()
-initBot conn = do
+initBot :: Mex.Leverage -> BitMEXApp IO ()
+initBot leverage conn = do
     config <- R.ask
     pub <- R.asks publicKey
     time <- liftIO $ makeTimestamp <$> getPOSIXTime
@@ -181,7 +182,9 @@ initBot conn = do
             , openBuys = openBuys
             , openSells = openSells
             , stopOrderId = stopOrderId
+            , leverage = leverage
             }
+    _ <- updateLeverage XBTUSD leverage
     liftIO $ do
         sendMessage
             conn

@@ -2,6 +2,7 @@ module Bot.Util
     ( makeMarket
     , prepareOrder
     , placeBulkOrder
+    , updateLeverage
     , placeOrder
     , amendStopOrder
     , cancelStopOrder
@@ -19,10 +20,12 @@ import qualified BitMEX                      as Mex
     ( Accept (..)
     , BitMEXRequest (..)
     , ContentType (..)
+    , Leverage
     , MimeError (..)
     , MimeJSON (..)
     , MimeResult (..)
     , Order (..)
+    , Position
     , Symbol (..)
     , orderAmend
     , orderAmendBulk
@@ -30,6 +33,8 @@ import qualified BitMEX                      as Mex
     , orderCancelAll
     , orderNew
     , orderNewBulk
+    , positionUpdateLeverage
+    , unLeverage
     , _setBodyLBS
     )
 import           BitMEXClient
@@ -206,6 +211,28 @@ restart = do
         atomically $ writeTVar prevPosition None
         atomically $ writeTVar openBuys 0
         atomically $ writeTVar openSells 0
+
+-------------------------------------------------------------
+-- POSITION
+-------------------------------------------------------------
+updateLeverage ::
+       Symbol
+    -> Mex.Leverage
+    -> BitMEXReader IO (Mex.MimeResult Mex.Position)
+updateLeverage sym lev = do
+    let leverageTemplate =
+            Mex.positionUpdateLeverage
+                (Mex.ContentType Mex.MimeJSON)
+                (Mex.Accept Mex.MimeJSON)
+                (Mex.Symbol ((T.pack . show) sym))
+                lev
+        leverageRequest =
+            Mex._setBodyLBS leverageTemplate $
+            "{\"leverage\": " <> encode (Mex.unLeverage lev) <>
+            ", \"symbol\": " <>
+            (encode $ (T.pack . show) sym) <>
+            "}"
+    makeRequest leverageRequest
 
 -------------------------------------------------------------
 -- MARKET MAKING

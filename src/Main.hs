@@ -2,7 +2,8 @@ module Main where
 
 import           BasicPrelude
 import qualified BitMEX                  as Mex
-    ( runDefaultLogExecWithContext
+    ( Leverage (..)
+    , runDefaultLogExecWithContext
     )
 import           BitMEXClient
     ( BitMEXWrapperConfig (..)
@@ -15,6 +16,7 @@ import           Bot.Logging
     , initEsLogContext
     )
 import qualified Data.ByteString         as B (readFile)
+import           Data.Text               as T (pack)
 import           Network.HTTP.Client     (newManager)
 import           Network.HTTP.Client.TLS
     ( tlsManagerSettings
@@ -29,7 +31,7 @@ import qualified System.Environment      as Env (getArgs)
 main :: IO ()
 main = do
     mgr <- newManager tlsManagerSettings
-    (pubPath:privPath:esUserPath:esPasswordPath:_) <- Env.getArgs
+    (pubPath:privPath:esUserPath:esPasswordPath:leverage:_) <- Env.getArgs
     pub <- readFile pubPath
     priv <- B.readFile privPath
     user <- readFile esUserPath
@@ -49,4 +51,4 @@ main = do
             , logContext = logCxt
             , logContextFunction = logCxtF
             }
-    connect config initBot
+    connect config (initBot (Mex.Leverage (read (T.pack leverage):: Double)))

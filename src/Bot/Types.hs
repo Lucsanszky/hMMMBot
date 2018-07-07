@@ -21,6 +21,9 @@ module Bot.Types
     ) where
 
 import           BasicPrelude
+import           BitMEX                         as Mex
+    ( Leverage (..)
+    )
 import           BitMEXClient
     ( BitMEXReader
     , Response
@@ -113,6 +116,7 @@ data BotState = BotState
     , openBuys         :: !(TVar Integer)
     , openSells        :: !(TVar Integer)
     , stopOrderId      :: !(TVar OrderID)
+    , leverage         :: !Mex.Leverage
     }
 
 newtype BitMEXBot m a = BitMEXBot
