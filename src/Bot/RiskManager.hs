@@ -78,12 +78,12 @@ manageRisk _ Nothing = return ()
 manageRisk currQty avgCostPrice
     | currQty > 0 = do
         let roundedPrice =
-                map (roundPrice . (* 0.9925)) avgCostPrice
+                map (roundPrice . (* 0.99)) avgCostPrice
             newStopLoss = longPosStopLoss roundedPrice
         manageStopLoss newStopLoss Long
     | currQty < 0 = do
         let roundedPrice =
-                map (roundPrice . (* 1.0075)) avgCostPrice
+                map (roundPrice . (* 1.01)) avgCostPrice
             newStopLoss = shortPosStopLoss roundedPrice
         manageStopLoss newStopLoss Short
     | otherwise = return ()
@@ -136,9 +136,5 @@ pnlTracker botState@BotState {..} config = do
                 (kill "lost too much")
                 botState
                 config
-        else do
-            when (prev /= current) $ do
-                liftIO $
-                    atomically $
-                    writeTVar prevBalance current
+        else
             return ()
