@@ -23,11 +23,6 @@ import           Network.HTTP.Client.TLS
     )
 import qualified System.Environment      as Env (getArgs)
 
--- tickSize = 0.5
--- strategyThreshold = 0.5
--- minPos = -2
--- maxPos = 2
-
 main :: IO ()
 main = do
     mgr <- newManager tlsManagerSettings
@@ -40,7 +35,7 @@ main = do
     let logCxtF = esLoggingContext user pw
     let config =
             BitMEXWrapperConfig
-            { environment = TestNet
+            { environment = MainNet
             , pathREST = Just "/api/v1"
             , pathWS = Just "/realtime"
             , manager = Just mgr

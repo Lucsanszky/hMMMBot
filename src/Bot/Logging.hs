@@ -52,7 +52,7 @@ esLoggingContext user pw cxt = do
                       (EsUsername user)
                       (EsPassword pw)
             }
-            (IndexName "trading-session")
+            (IndexName "live-trading-session")
             (MappingName "hMMMBot")
             DebugS
             V3
