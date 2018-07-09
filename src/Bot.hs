@@ -35,7 +35,11 @@ import           Data.ByteString.Char8          (pack)
 import           Data.Time.Clock.POSIX
     ( getPOSIXTime
     )
-import           Data.Vector                    (head, last)
+import           Data.Vector
+    ( head
+    , last
+    , (!)
+    )
 import           Network.HTTP.Client
     ( responseStatus
     )
@@ -70,8 +74,10 @@ trade (obAsks, obBids) = do
         sellCost <- liftIO $ atomically $ readTVar openSellCost
         let newBestAsk = head $ head obAsks
             worstAsk = head $ last obAsks
+            askL4 = head $ obAsks ! 3
             newBestBid = head $ head obBids
             worstBid = head $ last obBids
+            bidL4 = head $ obBids ! 3
             sellVol = (foldl' (+) 0 . map last) $ obAsks
             buyVol = (foldl' (+) 0 . map last) $ obBids
             imbalance =
@@ -91,7 +97,7 @@ trade (obAsks, obBids) = do
                     convert
                         XBt_to_XBT
                         (fromIntegral buyCost)
-            when ((abs buyAvg) < worstBid) $ do
+            when ((abs buyAvg) < bidL4) $ do
                 cancelLimitOrders "Buy"
                 return ()
         when (sellQty /= 0 && sellCost /= 0) $ do
@@ -100,7 +106,7 @@ trade (obAsks, obBids) = do
                     convert
                         XBt_to_XBT
                         (fromIntegral sellCost)
-            when ((abs sellAvg) > worstAsk) $ do
+            when ((abs sellAvg) > askL4) $ do
                 cancelLimitOrders "Sell"
                 return ()
         if (convert XBt_to_XBT (fromIntegral available)) >
@@ -171,10 +177,10 @@ initBot leverage conn = do
     let Right (Mex.Margin { Mex.marginWalletBalance = Just wb
                           , Mex.marginAvailableMargin = Just ab
                           }) = res
-    lobQueue <- liftIO $ atomically $ newTBQueue 9
-    riskManagerQueue <- liftIO $ atomically $ newTBQueue 9
-    slwQueue <- liftIO $ atomically $ newTBQueue 9
-    pnlQueue <- liftIO $ atomically $ newTBQueue 9
+    lobQueue <- liftIO $ atomically $ newTBQueue 1
+    riskManagerQueue <- liftIO $ atomically $ newTBQueue 1
+    slwQueue <- liftIO $ atomically $ newTBQueue 1
+    pnlQueue <- liftIO $ atomically $ newTBQueue 1
     prevPosition <- liftIO $ atomically $ newTVar None
     positionSize <- liftIO $ atomically $ newTVar 0
     realPnl <- liftIO $ atomically $ newTVar 0
