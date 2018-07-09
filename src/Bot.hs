@@ -48,105 +48,80 @@ import qualified Network.HTTP.Types.Status      as HTTP
     )
 
 trader :: BotState -> BitMEXWrapperConfig -> IO ()
-trader botState@BotState {..} config = do
-    resp <-
-        atomically $
-        readResponse $ unLobQueue lobQueue
-    case resp of
-        OB10 (TABLE {_data = orderbookData}) -> do
-            let RespOrderBook10 {asks = obAsks, bids = obBids} =
-                    head orderbookData
-            (unWrapBotWith
-                  (trade (obAsks, obBids))
-                  botState
-                  config)
-        _ -> return()
+trader botState@BotState {..} config =
+    unWrapBotWith trade botState config
 
-trade :: (Vector (Vector Double), Vector (Vector Double)) -> BitMEXBot ()
-trade (obAsks, obBids) = do
-        BotState {..} <- R.ask
-        available <-
-            liftIO $ atomically $ readTVar availableBalance
-        total <- liftIO $ atomically $ readTVar walletBalance
-        buyQty <- liftIO $ atomically $ readTVar openBuys
-        buyCost <- liftIO $ atomically $ readTVar openBuyCost
-        sellQty <- liftIO $ atomically $ readTVar openSells
-        sellCost <- liftIO $ atomically $ readTVar openSellCost
-        let newBestAsk = head $ head obAsks
-            worstAsk = head $ last obAsks
-            askL4 = head $ obAsks ! 3
-            newBestBid = head $ head obBids
-            worstBid = head $ last obBids
-            bidL4 = head $ obBids ! 3
-            sellVol = (foldl' (+) 0 . map last) $ obAsks
-            buyVol = (foldl' (+) 0 . map last) $ obBids
-            imbalance =
-                (abs (sellVol - buyVol)) / sellVol + buyVol
-            orderSize =
-                getOrderSize newBestAsk $ fromIntegral total
-            lev = Mex.unLeverage leverage
-            aggressiveLimit =
-                getAggressiveLimit newBestAsk $
-                fromIntegral total / lev
-            passiveLimit =
-                getPassiveLimit newBestAsk $
-                fromIntegral total / lev
-        when (buyQty /= 0 && buyCost /= 0) $ do
-            let buyAvg =
-                    (fromIntegral buyQty) /
-                    convert
-                        XBt_to_XBT
-                        (fromIntegral buyCost)
-            when ((abs buyAvg) < bidL4) $ do
-                cancelLimitOrders "Buy"
-                return ()
-        when (sellQty /= 0 && sellCost /= 0) $ do
-            let sellAvg =
-                    (fromIntegral sellQty) /
-                    convert
-                        XBt_to_XBT
-                        (fromIntegral sellCost)
-            when ((abs sellAvg) > askL4) $ do
-                cancelLimitOrders "Sell"
-                return ()
-        if (convert XBt_to_XBT (fromIntegral available)) >
-            convert USD_to_XBT newBestAsk *
-            (fromIntegral orderSize) *
-            lev
-            then if imbalance > 0.5 &&
-                    (newBestAsk - newBestBid > 1.0)
-                      then do
-                          let avg =
-                                  (newBestAsk +
-                                  newBestBid) /
-                                  2
-                          if (buyVol > sellVol)
-                              then do
-                                  makeMarket
-                                      aggressiveLimit
-                                      orderSize
-                                      (fromIntegral $
-                                      ceiling avg)
-                                      ((fromIntegral $
-                                        ceiling avg) -
-                                      0.5)
-                              else do
-                                  makeMarket
-                                      aggressiveLimit
-                                      orderSize
-                                      ((fromIntegral $
-                                        floor avg) +
-                                      0.5)
-                                      (fromIntegral $
-                                      floor avg)
-                      else do
-                          makeMarket
-                              passiveLimit
-                              orderSize
-                              newBestAsk
-                              newBestBid
-            else do
-                kill "not enough funds"
+trade :: BitMEXBot ()
+trade = do
+    BotState {..} <- R.ask
+    available <-
+        liftIO $ atomically $ readTVar availableBalance
+    total <- liftIO $ atomically $ readTVar walletBalance
+    buyQty <- liftIO $ atomically $ readTVar openBuys
+    buyCost <- liftIO $ atomically $ readTVar openBuyCost
+    sellQty <- liftIO $ atomically $ readTVar openSells
+    sellCost <- liftIO $ atomically $ readTVar openSellCost
+    obAsks' <- liftIO $ atomically $ readTVar obAsks
+    obBids' <- liftIO $ atomically $ readTVar obBids
+    let newBestAsk = head $ head obAsks'
+        askL4 = head $ obAsks' ! 3
+        newBestBid = head $ head obBids'
+        bidL4 = head $ obBids' ! 3
+        sellVol = (foldl' (+) 0 . map last) $ obAsks'
+        buyVol = (foldl' (+) 0 . map last) $ obBids'
+        imbalance =
+            (abs (sellVol - buyVol)) / sellVol + buyVol
+        orderSize =
+            getOrderSize newBestAsk $ fromIntegral total
+        lev = Mex.unLeverage leverage
+        aggressiveLimit =
+            getAggressiveLimit newBestAsk $
+            fromIntegral total / lev
+        passiveLimit =
+            getPassiveLimit newBestAsk $
+            fromIntegral total / lev
+    when (buyQty /= 0 && buyCost /= 0) $ do
+        let buyAvg =
+                (fromIntegral buyQty) /
+                convert XBt_to_XBT (fromIntegral buyCost)
+        when ((abs buyAvg) < bidL4) $ do
+            cancelLimitOrders "Buy"
+            return ()
+    when (sellQty /= 0 && sellCost /= 0) $ do
+        let sellAvg =
+                (fromIntegral sellQty) /
+                convert XBt_to_XBT (fromIntegral sellCost)
+        when ((abs sellAvg) > askL4) $ do
+            cancelLimitOrders "Sell"
+            return ()
+    if (convert XBt_to_XBT (fromIntegral available)) >
+       convert USD_to_XBT newBestAsk *
+       (fromIntegral orderSize) *
+       lev
+        then if imbalance > 0.5 &&
+                (newBestAsk - newBestBid > 1.0)
+                 then do
+                     if (buyVol > sellVol)
+                         then do
+                             makeMarket
+                                 aggressiveLimit
+                                 orderSize
+                                 (newBestAsk + 0.5)
+                                 newBestBid
+                         else do
+                             makeMarket
+                                 aggressiveLimit
+                                 orderSize
+                                 newBestAsk
+                                 (newBestBid - 0.5)
+                 else do
+                     makeMarket
+                         passiveLimit
+                         orderSize
+                         newBestAsk
+                         newBestBid
+        else do
+            kill "not enough funds"
 
 tradeLoop :: BitMEXBot ()
 tradeLoop = do
@@ -162,7 +137,8 @@ tradeLoop = do
         tr <- async $ forever $ trader botState config
         mapM_ A.link [risk, slw, pnl, tr]
     loop
-  where loop = loop
+  where
+    loop = loop
 
 initBot :: Mex.Leverage -> BitMEXApp ()
 initBot leverage conn = do
@@ -176,12 +152,13 @@ initBot leverage conn = do
     let Right (Mex.Margin { Mex.marginWalletBalance = Just wb
                           , Mex.marginAvailableMargin = Just ab
                           }) = res
-    lobQueue <- liftIO $ atomically $ newTBQueue 100
     riskManagerQueue <- liftIO $ atomically $ newTBQueue 100
     slwQueue <- liftIO $ atomically $ newTBQueue 100
     pnlQueue <- liftIO $ atomically $ newTBQueue 100
     prevPosition <- liftIO $ atomically $ newTVar None
     positionSize <- liftIO $ atomically $ newTVar 0
+    obAsks <- liftIO $ atomically $ newTVar empty
+    obBids <- liftIO $ atomically $ newTVar empty
     realPnl <- liftIO $ atomically $ newTVar 0
     prevBalance <- liftIO $ atomically $ newTVar $ floor wb
     availableBalance <-
@@ -197,13 +174,14 @@ initBot leverage conn = do
     let botState =
             BotState
             { connection = conn
-            , lobQueue = LOBQueue lobQueue
             , riskManagerQueue =
                   RiskManagerQueue riskManagerQueue
             , slwQueue = StopLossWatcherQueue slwQueue
             , pnlQueue = PnLQueue pnlQueue
             , prevPosition = prevPosition
             , positionSize = positionSize
+            , obAsks = obAsks
+            , obBids = obBids
             , realPnl = realPnl
             , prevBalance = prevBalance
             , availableBalance = availableBalance

@@ -10,6 +10,7 @@ import           BasicPrelude                   hiding
 import           BitMEXClient
     ( RespExecution (..)
     , RespMargin (..)
+    , RespOrderBook10 (..)
     , RespPosition (..)
     , Response (..)
     , TABLE (..)
@@ -39,11 +40,11 @@ processResponse (BotState {..}) msg = do
         Nothing -> return ()
         Just r ->
             case r of
-                OB10 t ->
-                    atomically $
-                    writeTBQueue
-                        (unLobQueue lobQueue)
-                        (Just (OB10 t))
+                OB10 (TABLE {_data = orderBookData}) -> do
+                    let RespOrderBook10 {asks = newAsks, bids = newBids} =
+                            head orderBookData
+                    atomically $ updateVector obAsks newAsks
+                    atomically $ updateVector obBids newBids
                 posResp@(P (TABLE {_data = positionData})) -> do
                     let RespPosition { currentQty = currQty
                                      , openOrderBuyQty = buyQty
@@ -117,3 +118,10 @@ updateVar var newVal = do
     if currVal == newVal
         then return ()
         else writeTVar var newVal
+
+updateVector :: TVar (Vector (Vector Double)) -> Vector (Vector Double) -> STM ()
+updateVector var newVec = do
+    currVec <- readTVar var
+    if (head $ head currVec) == (head $ head newVec)
+       then return ()
+       else writeTVar var newVec

@@ -8,13 +8,7 @@ module Bot.Types
     , ClientID(..)
     , LinkID(..)
     , OrderID(..)
-    -- , PositionQueue(..)
-    , LOBQueue(..)
-    -- , OrderQueue(..)
     , PositionType(..)
-    -- , ExecutionQueue(..)
-    -- , MarginQueue(..)
-    -- , MessageQueue(..)
     , PnLQueue(..)
     , RiskManagerQueue(..)
     , StopLossWatcherQueue(..)
@@ -34,6 +28,7 @@ import           Control.Monad.Reader
     ( MonadReader
     , ReaderT
     )
+import           Data.Vector                    (Vector)
 import           Network.WebSockets             (Connection)
 
 newtype StopPx =
@@ -60,30 +55,6 @@ newtype OrderID =
     OrderID (Maybe Text)
     deriving (Eq, Ord, Show)
 
--- newtype PositionQueue = PositionQueue
---     { unPositionQueue :: TQueue (Maybe Response)
---     }
-
-newtype LOBQueue = LOBQueue
-    { unLobQueue :: TBQueue (Maybe Response)
-    }
-
--- newtype OrderQueue = OrderQueue
---     { unOrderQueue :: (TQueue (Maybe Response))
---     }
-
--- newtype MarginQueue = MarginQueue
---     { unMarginQueue :: (TQueue (Maybe Response))
---     }
-
--- newtype ExecutionQueue = ExecutionQueue
---     { unExecutionQueue :: (TQueue (Maybe Response))
---     }
-
--- newtype MessageQueue = MessageQueue
---     { unMessageQueue :: (TQueue (Maybe Response))
---     }
-
 newtype RiskManagerQueue = RiskManagerQueue
     { unRiskManagerQueue :: TBQueue (Maybe Response)
     }
@@ -105,7 +76,6 @@ data BotState = BotState
     { connection       :: !Connection
     , riskManagerQueue :: !RiskManagerQueue
     , slwQueue         :: !StopLossWatcherQueue
-    , lobQueue         :: !LOBQueue
     , pnlQueue         :: !PnLQueue
     , realPnl          :: !(TVar Integer)
     , prevBalance      :: !(TVar Integer)
@@ -113,6 +83,8 @@ data BotState = BotState
     , walletBalance    :: !(TVar Integer)
     , prevPosition     :: !(TVar PositionType)
     , positionSize     :: !(TVar Integer)
+    , obAsks           :: !(TVar (Vector (Vector Double)))
+    , obBids           :: !(TVar (Vector (Vector Double)))
     , openBuys         :: !(TVar Integer)
     , openSells        :: !(TVar Integer)
     , openBuyCost      :: !(TVar Integer)
