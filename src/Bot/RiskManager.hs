@@ -48,7 +48,7 @@ import           Control.Monad.STM           (atomically)
 import           Data.Vector                 (head, (!?))
 
 manageStopLoss ::
-       Mex.Order -> PositionType -> BitMEXBot IO ()
+       Mex.Order -> PositionType -> BitMEXBot ()
 manageStopLoss newStopLoss newPos = do
     OrderID oid <-
         R.asks stopOrderId >>=
@@ -64,7 +64,7 @@ manageStopLoss newStopLoss newPos = do
         liftIO $ atomically $ writeTVar pSize newPos
     return ()
 
-manageRisk :: Double -> Maybe Double -> BitMEXBot IO ()
+manageRisk :: Double -> Maybe Double -> BitMEXBot ()
 manageRisk 0 _ = do
     OrderID oid <-
         R.asks stopOrderId >>=

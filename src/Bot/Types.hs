@@ -121,8 +121,8 @@ data BotState = BotState
     , leverage         :: !Mex.Leverage
     }
 
-newtype BitMEXBot m a = BitMEXBot
-    { runBot :: (ReaderT BotState (BitMEXReader m) a)
+newtype BitMEXBot a = BitMEXBot
+    { runBot :: (ReaderT BotState BitMEXReader) a
     } deriving ( Applicative
                , Functor
                , Monad

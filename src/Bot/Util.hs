@@ -93,7 +93,7 @@ import qualified Network.HTTP.Types.Status   as HTTP
 -- GENERAL
 -------------------------------------------------------------
 unWrapBotWith ::
-       (BitMEXBot IO ())
+       (BitMEXBot ())
     -> BotState
     -> BitMEXWrapperConfig
     -> IO ()
@@ -106,7 +106,7 @@ unWrapBotWith f botState config =
 -- ORDERS
 -------------------------------------------------------------
 placeOrder ::
-       Mex.Order -> BitMEXBot IO (Mex.MimeResult Mex.Order)
+       Mex.Order -> BitMEXBot (Mex.MimeResult Mex.Order)
 placeOrder order = do
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderNew
@@ -118,7 +118,7 @@ placeOrder order = do
     BitMEXBot . lift $ makeRequest orderRequest
 
 cancelOrders ::
-       [Text] -> BitMEXBot IO (Mex.MimeResult [Mex.Order])
+       [Text] -> BitMEXBot (Mex.MimeResult [Mex.Order])
 cancelOrders ids = do
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderCancel
@@ -131,7 +131,7 @@ cancelOrders ids = do
 
 placeBulkOrder ::
        [Mex.Order]
-    -> BitMEXBot IO (Mex.MimeResult [Mex.Order])
+    -> BitMEXBot (Mex.MimeResult [Mex.Order])
 placeBulkOrder orders = do
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderNewBulk
@@ -143,7 +143,7 @@ placeBulkOrder orders = do
     BitMEXBot . lift $ makeRequest orderRequest
 
 amendOrder ::
-       Mex.Order -> BitMEXBot IO (Mex.MimeResult Mex.Order)
+       Mex.Order -> BitMEXBot (Mex.MimeResult Mex.Order)
 amendOrder order = do
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderAmend
@@ -155,7 +155,7 @@ amendOrder order = do
 
 bulkAmendOrders ::
        [Mex.Order]
-    -> BitMEXBot IO (Mex.MimeResult [Mex.Order])
+    -> BitMEXBot (Mex.MimeResult [Mex.Order])
 bulkAmendOrders orders = do
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderAmendBulk
@@ -167,8 +167,8 @@ bulkAmendOrders orders = do
     BitMEXBot . lift $ makeRequest orderRequest
 
 placeStopOrder ::
-       BitMEXBot IO (Mex.MimeResult Mex.Order)
-    -> BitMEXBot IO ()
+       BitMEXBot (Mex.MimeResult Mex.Order)
+    -> BitMEXBot ()
 placeStopOrder order = do
     Mex.MimeResult {Mex.mimeResult = res} <- order
     case res of
@@ -181,7 +181,7 @@ placeStopOrder order = do
                 writeTVar o (OrderID (Just oid))
 
 amendStopOrder ::
-       Maybe Text -> Maybe Double -> BitMEXBot IO ()
+       Maybe Text -> Maybe Double -> BitMEXBot ()
 amendStopOrder oid stopPx = do
     let newStopLoss =
             (orderWithId (OrderID oid))
@@ -195,13 +195,13 @@ amendStopOrder oid stopPx = do
         else do
             kill "amending failed"
 
-cancelStopOrder :: OrderID -> BitMEXBot IO ()
+cancelStopOrder :: OrderID -> BitMEXBot ()
 cancelStopOrder (OrderID (Just oid)) = do
     cancelOrders [oid] >> R.asks stopOrderId >>= \o ->
         liftIO $ atomically $ writeTVar o (OrderID Nothing)
 cancelStopOrder _ = return ()
 
-cancelLimitOrders :: Text -> BitMEXBot IO ()
+cancelLimitOrders :: Text -> BitMEXBot ()
 cancelLimitOrders side = do
     let template =
             (Mex.orderCancelAll
@@ -236,7 +236,7 @@ cancelLimitOrders side = do
                         atomically $
                         writeTVar openSellCost 0
 
-kill :: String -> BitMEXBot IO ()
+kill :: String -> BitMEXBot ()
 kill msg = do
     pSize <-
         R.asks positionSize >>=
@@ -249,7 +249,7 @@ kill msg = do
     placeStopOrder (placeOrder close)
     fail msg
 
-restart :: BitMEXBot IO ()
+restart :: BitMEXBot ()
 restart = do
     BotState {..} <- R.ask
     BitMEXBot . lift $
@@ -272,7 +272,7 @@ restart = do
 updateLeverage ::
        Symbol
     -> Mex.Leverage
-    -> BitMEXReader IO (Mex.MimeResult Mex.Position)
+    -> BitMEXReader (Mex.MimeResult Mex.Position)
 updateLeverage sym lev = do
     let leverageTemplate =
             Mex.positionUpdateLeverage
@@ -326,7 +326,7 @@ makeMarket ::
     -> Integer
     -> Double
     -> Double
-    -> BitMEXBot IO ()
+    -> BitMEXBot ()
 makeMarket limit orderSize ask bid = do
     BotState {..} <- R.ask
     size <- liftIO $ atomically $ readTVar positionSize

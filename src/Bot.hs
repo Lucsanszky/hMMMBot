@@ -58,7 +58,7 @@ trader botState@BotState {..} config = do
                   config)
         _ -> return()
 
-trade :: (Vector (Vector Double), Vector (Vector Double)) -> BitMEXBot IO ()
+trade :: (Vector (Vector Double), Vector (Vector Double)) -> BitMEXBot ()
 trade (obAsks, obBids) = do
         BotState {..} <- R.ask
         available <-
@@ -142,7 +142,7 @@ trade (obAsks, obBids) = do
             else do
                 kill "not enough funds"
 
-tradeLoop :: BitMEXBot IO ()
+tradeLoop :: BitMEXBot ()
 tradeLoop = do
     config <- BitMEXBot $ R.lift $ R.ask
     botState@(BotState {..}) <- R.ask
@@ -159,7 +159,7 @@ tradeLoop = do
   where loop = loop
     -- forever $ return ()
 
-initBot :: Mex.Leverage -> BitMEXApp IO ()
+initBot :: Mex.Leverage -> BitMEXApp ()
 initBot leverage conn = do
     config <- R.ask
     pub <- R.asks publicKey
