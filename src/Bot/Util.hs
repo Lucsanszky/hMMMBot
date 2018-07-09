@@ -421,7 +421,7 @@ makeMarket limit orderSize ask bid = do
                                            ask)))
                                     (Just "Sell")
                                     pairs
-                else if code == 503
+                else if (code == 503 || code == 502)
                          then do
                              liftIO $ threadDelay 500000
                              return ()
