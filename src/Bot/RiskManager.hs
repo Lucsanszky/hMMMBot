@@ -27,7 +27,8 @@ import           Bot.Math                    (roundPrice)
 import           Bot.OrderTemplates
 import           Bot.Types
 import           Bot.Util
-    ( cancelOrders
+    ( cancelLimitOrders
+    , cancelOrders
     , cancelStopOrder
     , kill
     , placeOrder

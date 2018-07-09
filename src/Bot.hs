@@ -49,27 +49,58 @@ trade (bestAsk, bestBid) = do
     available <-
         liftIO $ atomically $ readTVar availableBalance
     total <- liftIO $ atomically $ readTVar walletBalance
+    buyQty <- liftIO $ atomically $ readTVar openBuys
+    buyCost <- liftIO $ atomically $ readTVar openBuyCost
+    sellQty <- liftIO $ atomically $ readTVar openSells
+    sellCost <- liftIO $ atomically $ readTVar openSellCost
     OB10 (TABLE {_data = orderbookData}) <-
         liftIO $
         atomically $ readResponse $ unLobQueue lobQueue
     let RespOrderBook10 {asks = obAsks, bids = obBids} =
             head orderbookData
         newBestAsk = head $ head obAsks
+        worstAsk = head $ last obAsks
         newBestBid = head $ head obBids
+        worstBid = head $ last obBids
         sellVol = (foldl' (+) 0 . map last) $ obAsks
         buyVol = (foldl' (+) 0 . map last) $ obBids
         imbalance =
             (abs (sellVol - buyVol)) / sellVol + buyVol
-        orderSize = getOrderSize newBestAsk $ fromIntegral total
+        orderSize =
+            getOrderSize newBestAsk $ fromIntegral total
         lev = Mex.unLeverage leverage
-        aggressiveLimit = getAggressiveLimit newBestAsk $ fromIntegral total / lev
-        passiveLimit = getPassiveLimit newBestAsk $ fromIntegral total / lev
+        aggressiveLimit =
+            getAggressiveLimit newBestAsk $
+            fromIntegral total / lev
+        passiveLimit =
+            getPassiveLimit newBestAsk $
+            fromIntegral total / lev
+    when (buyQty /= 0 && buyCost /= 0) $ do
+        let buyAvg =
+                (fromIntegral buyQty) /
+                convert
+                    XBt_to_XBT
+                    (fromIntegral buyCost)
+        when ((abs buyAvg) < worstBid - 2) $ do
+            cancelLimitOrders "Buy"
+            trade (newBestAsk, newBestBid)
+    when (sellQty /= 0 && sellCost /= 0) $ do
+        let sellAvg =
+                (fromIntegral sellQty) /
+                convert
+                    XBt_to_XBT
+                    (fromIntegral sellCost)
+        when ((abs sellAvg) > worstAsk + 2) $ do
+            cancelLimitOrders "Sell"
+            trade (newBestAsk, newBestBid)
     case newBestAsk /= bestAsk || newBestBid /= bestBid of
         False -> do
             trade (bestAsk, bestBid)
         True -> do
             if (convert XBt_to_XBT (fromIntegral available)) >
-               convert USD_to_XBT newBestAsk * (fromIntegral orderSize) * lev
+               convert USD_to_XBT newBestAsk *
+               (fromIntegral orderSize) *
+               lev
                 then if imbalance > 0.5 &&
                         (newBestAsk - newBestBid > 1.0)
                          then do
@@ -162,7 +193,9 @@ initBot leverage conn = do
     walletBalance <-
         liftIO $ atomically $ newTVar $ floor wb
     openBuys <- liftIO $ atomically $ newTVar 0
+    openBuyCost <- liftIO $ atomically $ newTVar 0
     openSells <- liftIO $ atomically $ newTVar 0
+    openSellCost <- liftIO $ atomically $ newTVar 0
     stopOrderId <-
         liftIO $ atomically $ newTVar (OrderID Nothing)
     let botState =
@@ -180,7 +213,9 @@ initBot leverage conn = do
             , availableBalance = availableBalance
             , walletBalance = walletBalance
             , openBuys = openBuys
+            , openBuyCost = openBuyCost
             , openSells = openSells
+            , openSellCost = openSellCost
             , stopOrderId = stopOrderId
             , leverage = leverage
             }

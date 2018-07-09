@@ -2,6 +2,7 @@ module Bot.Util
     ( makeMarket
     , prepareOrder
     , placeBulkOrder
+    , cancelLimitOrders
     , getAggressiveLimit
     , getPassiveLimit
     , getOrderSize
@@ -23,13 +24,16 @@ import qualified BitMEX                      as Mex
     ( Accept (..)
     , BitMEXRequest (..)
     , ContentType (..)
+    , Filter (..)
     , Leverage
     , MimeError (..)
+    , MimeFormUrlEncoded (..)
     , MimeJSON (..)
     , MimeResult (..)
     , Order (..)
     , Position
     , Symbol (..)
+    , applyOptionalParam
     , orderAmend
     , orderAmendBulk
     , orderCancel
@@ -39,6 +43,8 @@ import qualified BitMEX                      as Mex
     , orderOrdStatusL
     , orderSideL
     , positionUpdateLeverage
+    , setQuery
+    , toQuery
     , unLeverage
     , _setBodyLBS
     )
@@ -71,6 +77,9 @@ import qualified Control.Monad.Reader        as R
     )
 import           Control.Monad.STM           (atomically)
 import           Data.Aeson                  (encode)
+import qualified Data.ByteString.Lazy        as LBS
+    ( ByteString
+    )
 import qualified Data.Text                   as T (pack)
 import           Lens.Micro
 import           Network.HTTP.Client
@@ -192,6 +201,41 @@ cancelStopOrder (OrderID (Just oid)) = do
         liftIO $ atomically $ writeTVar o (OrderID Nothing)
 cancelStopOrder _ = return ()
 
+cancelLimitOrders :: Text -> BitMEXBot IO ()
+cancelLimitOrders side = do
+    let template =
+            (Mex.orderCancelAll
+                 (Mex.ContentType Mex.MimeJSON)
+                 (Mex.Accept Mex.MimeJSON))
+        query =
+            ( "filter"
+            , Just
+                  ("{\"ordType\": \"Limit\", \"side\":\"" <>
+                   side <>
+                   "\"}")) :: (ByteString, Maybe Text)
+        req = Mex.setQuery template $ Mex.toQuery query
+    Mex.MimeResult {Mex.mimeResult = res} <-
+        BitMEXBot . lift $ makeRequest req
+    case res of
+        Left (Mex.MimeError {mimeError = s}) -> kill s
+        Right _ -> do
+            if side == "Buy"
+                then do
+                    openBuys <- R.asks openBuys
+                    openBuyCost <- R.asks openBuyCost
+                    liftIO $
+                        atomically $ writeTVar openBuys 0
+                    liftIO $
+                        atomically $ writeTVar openBuyCost 0
+                else do
+                    openSells <- R.asks openSells
+                    openSellCost <- R.asks openSellCost
+                    liftIO $
+                        atomically $ writeTVar openSells 0
+                    liftIO $
+                        atomically $
+                        writeTVar openSellCost 0
+
 kill :: String -> BitMEXBot IO ()
 kill msg = do
     pSize <-
@@ -218,7 +262,9 @@ restart = do
         atomically $ writeTVar positionSize 0
         atomically $ writeTVar prevPosition None
         atomically $ writeTVar openBuys 0
+        atomically $ writeTVar openBuyCost 0
         atomically $ writeTVar openSells 0
+        atomically $ writeTVar openSellCost 0
 
 -------------------------------------------------------------
 -- POSITION
@@ -286,6 +332,8 @@ makeMarket limit orderSize ask bid = do
     size <- liftIO $ atomically $ readTVar positionSize
     buys' <- liftIO $ atomically $ readTVar openBuys
     sells' <- liftIO $ atomically $ readTVar openSells
+    openBC <- liftIO $ atomically $ readTVar openBuyCost
+    openSC <- liftIO $ atomically $ readTVar openSellCost
     let buys =
             if size > 0
                 then size + buys'
@@ -332,21 +380,47 @@ makeMarket limit orderSize ask bid = do
                                      , o ^. Mex.orderSideL))
                                 orders
                     liftIO $
-                        atomically $
-                        updateVar openBuys $
-                        buys' +
-                        incrementQty
-                            orderSize
-                            (Just "Buy")
-                            pairs
+                        atomically $ do
+                            updateVar openBuys $
+                                buys' +
+                                incrementQty
+                                    orderSize
+                                    (Just "Buy")
+                                    pairs
                     liftIO $
-                        atomically $
-                        updateVar openSells $
-                        sells' +
-                        incrementQty
-                            orderSize
-                            (Just "Sell")
-                            pairs
+                        atomically $ do
+                            updateVar openBuyCost $
+                                openBC -
+                                (incrementQty
+                                     (floor $
+                                      convert
+                                          XBT_to_XBt
+                                          (fromIntegral
+                                               orderSize /
+                                           bid)))
+                                    (Just "Buy")
+                                    pairs
+                    liftIO $
+                        atomically $ do
+                            updateVar openSells $
+                                sells' +
+                                incrementQty
+                                    orderSize
+                                    (Just "Sell")
+                                    pairs
+                    liftIO $
+                        atomically $ do
+                            updateVar openSellCost $
+                                openSC -
+                                (incrementQty
+                                     (floor $
+                                      convert
+                                          XBT_to_XBt
+                                          (fromIntegral
+                                               orderSize /
+                                           ask)))
+                                    (Just "Sell")
+                                    pairs
                 else if code == 503
                          then do
                              liftIO $ threadDelay 500000

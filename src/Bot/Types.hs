@@ -99,7 +99,7 @@ newtype PnLQueue = PnLQueue
 data PositionType = Long | Short | None
     deriving (Eq, Show)
 
-data Rule = XBt_to_XBT | USD_to_XBT | XBT_to_USD
+data Rule = XBt_to_XBT | XBT_to_XBt | USD_to_XBT | XBT_to_USD
 
 data BotState = BotState
     { connection       :: !Connection
@@ -115,6 +115,8 @@ data BotState = BotState
     , positionSize     :: !(TVar Integer)
     , openBuys         :: !(TVar Integer)
     , openSells        :: !(TVar Integer)
+    , openBuyCost      :: !(TVar Integer)
+    , openSellCost     :: !(TVar Integer)
     , stopOrderId      :: !(TVar OrderID)
     , leverage         :: !Mex.Leverage
     }
