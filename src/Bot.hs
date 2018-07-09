@@ -93,61 +93,57 @@ trade (bestAsk, bestBid) = do
         when ((abs sellAvg) > worstAsk + 2) $ do
             cancelLimitOrders "Sell"
             trade (newBestAsk, newBestBid)
-    case newBestAsk /= bestAsk || newBestBid /= bestBid of
-        False -> do
-            trade (bestAsk, bestBid)
-        True -> do
-            if (convert XBt_to_XBT (fromIntegral available)) >
-               convert USD_to_XBT newBestAsk *
-               (fromIntegral orderSize) *
-               lev
-                then if imbalance > 0.5 &&
-                        (newBestAsk - newBestBid > 1.0)
-                         then do
-                             let avg =
-                                     (newBestAsk +
-                                      newBestBid) /
-                                     2
-                             if (buyVol > sellVol)
-                                 then do
-                                     makeMarket
-                                         aggressiveLimit
-                                         orderSize
-                                         (fromIntegral $
-                                          ceiling avg)
-                                         ((fromIntegral $
-                                           ceiling avg) -
-                                          0.5)
-                                     trade
-                                         ( (fromIntegral $
-                                            ceiling avg)
-                                         , (fromIntegral $
-                                            ceiling avg) -
-                                           0.5)
-                                 else do
-                                     makeMarket
-                                         aggressiveLimit
-                                         orderSize
-                                         ((fromIntegral $
-                                           floor avg) +
-                                          0.5)
-                                         (fromIntegral $
-                                          floor avg)
-                                     trade
-                                         ( (fromIntegral $
-                                            floor avg) +
-                                           0.5
-                                         , (fromIntegral $
-                                            floor avg))
-                         else do
-                             makeMarket
-                                 passiveLimit
-                                 orderSize
-                                 newBestAsk
-                                 newBestBid
-                             trade (newBestAsk, newBestBid)
-                else do
-                    kill "not enough funds"
+        if (convert XBt_to_XBT (fromIntegral available)) >
+            convert USD_to_XBT newBestAsk *
+            (fromIntegral orderSize) *
+            lev
+            then if imbalance > 0.5 &&
+                    (newBestAsk - newBestBid > 1.0)
+                      then do
+                          let avg =
+                                  (newBestAsk +
+                                  newBestBid) /
+                                  2
+                          if (buyVol > sellVol)
+                              then do
+                                  makeMarket
+                                      aggressiveLimit
+                                      orderSize
+                                      (fromIntegral $
+                                      ceiling avg)
+                                      ((fromIntegral $
+                                        ceiling avg) -
+                                      0.5)
+                                  trade
+                                      ( (fromIntegral $
+                                        ceiling avg)
+                                      , (fromIntegral $
+                                        ceiling avg) -
+                                        0.5)
+                              else do
+                                  makeMarket
+                                      aggressiveLimit
+                                      orderSize
+                                      ((fromIntegral $
+                                        floor avg) +
+                                      0.5)
+                                      (fromIntegral $
+                                      floor avg)
+                                  trade
+                                      ( (fromIntegral $
+                                        floor avg) +
+                                        0.5
+                                      , (fromIntegral $
+                                        floor avg))
+                      else do
+                          makeMarket
+                              passiveLimit
+                              orderSize
+                              newBestAsk
+                              newBestBid
+                          trade (newBestAsk, newBestBid)
+            else do
+                kill "not enough funds"
 
 tradeLoop :: BitMEXBot IO ()
 tradeLoop = do
