@@ -81,7 +81,7 @@ trade (bestAsk, bestBid) = do
                 convert
                     XBt_to_XBT
                     (fromIntegral buyCost)
-        when ((abs buyAvg) < worstBid - 2) $ do
+        when ((abs buyAvg) < worstBid) $ do
             cancelLimitOrders "Buy"
             trade (newBestAsk, newBestBid)
     when (sellQty /= 0 && sellCost /= 0) $ do
@@ -90,7 +90,7 @@ trade (bestAsk, bestBid) = do
                 convert
                     XBt_to_XBT
                     (fromIntegral sellCost)
-        when ((abs sellAvg) > worstAsk + 2) $ do
+        when ((abs sellAvg) > worstAsk) $ do
             cancelLimitOrders "Sell"
             trade (newBestAsk, newBestBid)
     if (convert XBt_to_XBT (fromIntegral available)) >
