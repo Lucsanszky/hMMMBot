@@ -295,19 +295,19 @@ getPassiveLimit :: Double -> Double -> Integer
 getPassiveLimit price balance =
     floor $
     (convert XBT_to_USD price) *
-    (convert XBt_to_XBT $ balance * 0.075)
+    (convert XBt_to_XBT $ balance * 0.25)
 
 getAggressiveLimit :: Double -> Double -> Integer
 getAggressiveLimit price balance =
     floor $
     (convert XBT_to_USD price) *
-    (convert XBt_to_XBT $ balance * 0.15)
+    (convert XBt_to_XBT $ balance * 0.4)
 
 getOrderSize :: Double -> Double -> Integer
 getOrderSize price balance =
     floor $
     (convert XBT_to_USD price) *
-    (convert XBt_to_XBT $ balance * 0.02)
+    (convert XBt_to_XBT $ balance * 0.15)
 
 incrementQty ::
        Integer
