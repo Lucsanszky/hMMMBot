@@ -163,7 +163,6 @@ tradeLoop = do
         mapM_ A.link [risk, slw, pnl, tr]
     loop
   where loop = loop
-    -- forever $ return ()
 
 initBot :: Mex.Leverage -> BitMEXApp ()
 initBot leverage conn = do
@@ -177,10 +176,10 @@ initBot leverage conn = do
     let Right (Mex.Margin { Mex.marginWalletBalance = Just wb
                           , Mex.marginAvailableMargin = Just ab
                           }) = res
-    lobQueue <- liftIO $ atomically $ newTBQueue 1
-    riskManagerQueue <- liftIO $ atomically $ newTBQueue 1
-    slwQueue <- liftIO $ atomically $ newTBQueue 1
-    pnlQueue <- liftIO $ atomically $ newTBQueue 1
+    lobQueue <- liftIO $ atomically $ newTBQueue 100
+    riskManagerQueue <- liftIO $ atomically $ newTBQueue 100
+    slwQueue <- liftIO $ atomically $ newTBQueue 100
+    pnlQueue <- liftIO $ atomically $ newTBQueue 100
     prevPosition <- liftIO $ atomically $ newTVar None
     positionSize <- liftIO $ atomically $ newTVar 0
     realPnl <- liftIO $ atomically $ newTVar 0
