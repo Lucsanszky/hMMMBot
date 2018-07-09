@@ -1,2 +1,2 @@
-packages: ~/Desktop/Projects/haskell-bitmex/*/*.cabal
+packages: ../haskell-bitmex/*/*.cabal
           hMMMBot.cabal
