@@ -294,13 +294,13 @@ getLimit :: Double -> Double -> Integer
 getLimit price balance =
     floor $
     (convert XBT_to_USD price) *
-    (convert XBt_to_XBT $ balance * 0.5)
+    (convert XBt_to_XBT $ balance * 0.4)
 
 getOrderSize :: Double -> Double -> Integer
 getOrderSize price balance =
     floor $
     (convert XBT_to_USD price) *
-    (convert XBt_to_XBT $ balance * 0.15)
+    (convert XBt_to_XBT $ balance * 0.1)
 
 incrementQty ::
        Integer

@@ -70,11 +70,11 @@ trade = do
             newBestBid = head $ head obBids'
             bidL2 = head $ obBids' ! 1
             orderSize =
-                getOrderSize newBestAsk $ fromIntegral total
+                getOrderSize newBestAsk $ fromIntegral total * lev
             lev = Mex.unLeverage leverage
             limit =
                 getLimit newBestAsk $
-                fromIntegral total / lev
+                fromIntegral total * lev
         when (buyQty /= 0 && buyCost /= 0) $ do
             let buyAvg =
                     (fromIntegral buyQty) /
@@ -97,8 +97,7 @@ trade = do
             liftIO $ atomically $ readTVar availableBalance
         if (convert XBt_to_XBT (fromIntegral available)) >
            convert USD_to_XBT newBestAsk *
-           (fromIntegral orderSize) *
-           lev
+           (fromIntegral orderSize)
             then makeMarket
                      limit
                      orderSize
