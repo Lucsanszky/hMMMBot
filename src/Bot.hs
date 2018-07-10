@@ -104,7 +104,7 @@ trade = do
            (fromIntegral orderSize) *
            lev
             then if imbalance > 0.5 &&
-                    (newBestAsk - newBestBid > 1.0)
+                    (newBestAsk - newBestBid > 2.0)
                      then do
                          if (buyVol > sellVol)
                              then do
