@@ -41,7 +41,9 @@ processResponse (BotState {..}) msg = do
         Just r ->
             case r of
                 OB10 (TABLE {_data = orderBookData}) -> do
-                    let RespOrderBook10 {asks = newAsks, bids = newBids} =
+                    let RespOrderBook10 { asks = newAsks
+                                        , bids = newBids
+                                        } =
                             head orderBookData
                     atomically $ updateVector obAsks newAsks
                     atomically $ updateVector obBids newBids
@@ -119,9 +121,15 @@ updateVar var newVal = do
         then return ()
         else writeTVar var newVal
 
-updateVector :: TVar (Vector (Vector Double)) -> Vector (Vector Double) -> STM ()
+updateVector ::
+       TVar (Vector (Vector Double))
+    -> Vector (Vector Double)
+    -> STM ()
 updateVector var newVec = do
     currVec <- readTVar var
-    if (head $ head currVec) == (head $ head newVec)
-       then return ()
-       else writeTVar var newVec
+    if (null currVec)
+        then writeTVar var newVec
+        else if (head $ head currVec) /=
+                (head $ head newVec)
+                 then return ()
+                 else writeTVar var newVec
