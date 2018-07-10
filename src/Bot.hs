@@ -83,11 +83,7 @@ trade = do
                         (fromIntegral buyCost)
             when ((abs buyAvg) < bidL2) $ do
                 cancelLimitOrders "Buy"
-                makeMarket
-                    limit
-                    buyQty
-                    newBestAsk
-                    newBestBid
+                return ()
         when (sellQty /= 0 && sellCost /= 0) $ do
             let sellAvg =
                     (fromIntegral sellQty) /
@@ -96,11 +92,7 @@ trade = do
                         (fromIntegral sellCost)
             when ((abs sellAvg) > askL2) $ do
                 cancelLimitOrders "Sell"
-                makeMarket
-                    limit
-                    sellQty
-                    newBestAsk
-                    newBestBid
+                return ()
         available <-
             liftIO $ atomically $ readTVar availableBalance
         if (convert XBt_to_XBT (fromIntegral available)) >
