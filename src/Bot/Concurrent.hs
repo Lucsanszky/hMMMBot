@@ -45,8 +45,8 @@ processResponse (BotState {..}) msg = do
                                         , bids = newBids
                                         } =
                             head orderBookData
-                    atomically $ updateVector obAsks newAsks
-                    atomically $ updateVector obBids newBids
+                    atomically $ writeTVar obAsks newAsks
+                    atomically $ writeTVar obBids newBids
                 posResp@(P (TABLE {_data = positionData})) -> do
                     let RespPosition { currentQty = currQty
                                      , openOrderBuyQty = buyQty
@@ -120,16 +120,3 @@ updateVar var newVal = do
     if currVal == newVal
         then return ()
         else writeTVar var newVal
-
-updateVector ::
-       TVar (Vector (Vector Double))
-    -> Vector (Vector Double)
-    -> STM ()
-updateVector var newVec = do
-    currVec <- readTVar var
-    if (null currVec)
-        then writeTVar var newVec
-        else if (head $ head currVec) ==
-                (head $ head newVec)
-                 then return ()
-                 else writeTVar var newVec
