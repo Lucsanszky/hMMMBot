@@ -223,17 +223,17 @@ cancelLimitOrders side = do
                     openBuys <- R.asks openBuys
                     openBuyCost <- R.asks openBuyCost
                     liftIO $
-                        atomically $ writeTVar openBuys 0
+                        atomically $ updateVar openBuys 0
                     liftIO $
-                        atomically $ writeTVar openBuyCost 0
+                        atomically $ updateVar openBuyCost 0
                 else do
                     openSells <- R.asks openSells
                     openSellCost <- R.asks openSellCost
                     liftIO $
-                        atomically $ writeTVar openSells 0
+                        atomically $ updateVar openSells 0
                     liftIO $
                         atomically $
-                        writeTVar openSellCost 0
+                        updateVar openSellCost 0
 
 kill :: String -> BitMEXBot ()
 kill msg = do

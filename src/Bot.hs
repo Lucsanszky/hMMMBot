@@ -54,16 +54,17 @@ trader botState@BotState {..} config =
 trade :: BitMEXBot ()
 trade = do
     BotState {..} <- R.ask
-    available <-
-        liftIO $ atomically $ readTVar availableBalance
-    total <- liftIO $ atomically $ readTVar walletBalance
-    buyQty <- liftIO $ atomically $ readTVar openBuys
-    buyCost <- liftIO $ atomically $ readTVar openBuyCost
-    sellQty <- liftIO $ atomically $ readTVar openSells
-    sellCost <- liftIO $ atomically $ readTVar openSellCost
     obAsks' <- liftIO $ atomically $ readTVar obAsks
     obBids' <- liftIO $ atomically $ readTVar obBids
     when ((not . null) obAsks' && (not . null) obBids') $ do
+        total <-
+            liftIO $ atomically $ readTVar walletBalance
+        buyQty <- liftIO $ atomically $ readTVar openBuys
+        buyCost <-
+            liftIO $ atomically $ readTVar openBuyCost
+        sellQty <- liftIO $ atomically $ readTVar openSells
+        sellCost <-
+            liftIO $ atomically $ readTVar openSellCost
         let newBestAsk = head $ head obAsks'
             askL2 = head $ obAsks' ! 1
             newBestBid = head $ head obBids'
@@ -82,7 +83,11 @@ trade = do
                         (fromIntegral buyCost)
             when ((abs buyAvg) < bidL2) $ do
                 cancelLimitOrders "Buy"
-                return ()
+                makeMarket
+                    limit
+                    buyQty
+                    newBestAsk
+                    newBestBid
         when (sellQty /= 0 && sellCost /= 0) $ do
             let sellAvg =
                     (fromIntegral sellQty) /
@@ -91,7 +96,13 @@ trade = do
                         (fromIntegral sellCost)
             when ((abs sellAvg) > askL2) $ do
                 cancelLimitOrders "Sell"
-                return ()
+                makeMarket
+                    limit
+                    sellQty
+                    newBestAsk
+                    newBestBid
+        available <-
+            liftIO $ atomically $ readTVar availableBalance
         if (convert XBt_to_XBT (fromIntegral available)) >
            convert USD_to_XBT newBestAsk *
            (fromIntegral orderSize) *
