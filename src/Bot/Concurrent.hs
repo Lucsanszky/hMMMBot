@@ -129,7 +129,7 @@ updateVector var newVec = do
     currVec <- readTVar var
     if (null currVec)
         then writeTVar var newVec
-        else if (head $ head currVec) /=
+        else if (head $ head currVec) ==
                 (head $ head newVec)
                  then return ()
                  else writeTVar var newVec
