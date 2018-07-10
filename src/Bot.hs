@@ -65,21 +65,14 @@ trade = do
     obBids' <- liftIO $ atomically $ readTVar obBids
     when ((not . null) obAsks' && (not . null) obBids') $ do
         let newBestAsk = head $ head obAsks'
-            askL4 = head $ obAsks' ! 3
+            askL2 = head $ obAsks' ! 1
             newBestBid = head $ head obBids'
-            bidL4 = head $ obBids' ! 3
-            sellVol = (foldl' (+) 0 . map last) $ obAsks'
-            buyVol = (foldl' (+) 0 . map last) $ obBids'
-            imbalance =
-                (abs (sellVol - buyVol)) / sellVol + buyVol
+            bidL2 = head $ obBids' ! 1
             orderSize =
                 getOrderSize newBestAsk $ fromIntegral total
             lev = Mex.unLeverage leverage
-            aggressiveLimit =
-                getAggressiveLimit newBestAsk $
-                fromIntegral total / lev
-            passiveLimit =
-                getPassiveLimit newBestAsk $
+            limit =
+                getLimit newBestAsk $
                 fromIntegral total / lev
         when (buyQty /= 0 && buyCost /= 0) $ do
             let buyAvg =
@@ -87,7 +80,7 @@ trade = do
                     convert
                         XBt_to_XBT
                         (fromIntegral buyCost)
-            when ((abs buyAvg) < bidL4) $ do
+            when ((abs buyAvg) < bidL2) $ do
                 cancelLimitOrders "Buy"
                 return ()
         when (sellQty /= 0 && sellCost /= 0) $ do
@@ -96,35 +89,18 @@ trade = do
                     convert
                         XBt_to_XBT
                         (fromIntegral sellCost)
-            when ((abs sellAvg) > askL4) $ do
+            when ((abs sellAvg) > askL2) $ do
                 cancelLimitOrders "Sell"
                 return ()
         if (convert XBt_to_XBT (fromIntegral available)) >
            convert USD_to_XBT newBestAsk *
            (fromIntegral orderSize) *
            lev
-            then if imbalance > 0.5 &&
-                    (newBestAsk - newBestBid > 2.0)
-                     then do
-                         if (buyVol > sellVol)
-                             then do
-                                 makeMarket
-                                     aggressiveLimit
-                                     orderSize
-                                     (newBestAsk + 0.5)
-                                     newBestBid
-                             else do
-                                 makeMarket
-                                     aggressiveLimit
-                                     orderSize
-                                     newBestAsk
-                                     (newBestBid - 0.5)
-                     else do
-                         makeMarket
-                             passiveLimit
-                             orderSize
-                             newBestAsk
-                             newBestBid
+            then makeMarket
+                     limit
+                     orderSize
+                     newBestAsk
+                     newBestBid
             else do
                 kill "not enough funds"
 

@@ -3,8 +3,7 @@ module Bot.Util
     , prepareOrder
     , placeBulkOrder
     , cancelLimitOrders
-    , getAggressiveLimit
-    , getPassiveLimit
+    , getLimit
     , getOrderSize
     , updateLeverage
     , placeOrder
@@ -291,14 +290,8 @@ updateLeverage sym lev = do
 -------------------------------------------------------------
 -- MARKET MAKING
 -------------------------------------------------------------
-getPassiveLimit :: Double -> Double -> Integer
-getPassiveLimit price balance =
-    floor $
-    (convert XBT_to_USD price) *
-    (convert XBt_to_XBT $ balance * 0.35)
-
-getAggressiveLimit :: Double -> Double -> Integer
-getAggressiveLimit price balance =
+getLimit :: Double -> Double -> Integer
+getLimit price balance =
     floor $
     (convert XBT_to_USD price) *
     (convert XBt_to_XBT $ balance * 0.5)
