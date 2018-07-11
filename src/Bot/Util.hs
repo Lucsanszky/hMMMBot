@@ -4,6 +4,7 @@ module Bot.Util
     , placeBulkOrder
     , cancelLimitOrders
     , getLimit
+
     , getOrderSize
     , updateLeverage
     , placeOrder
@@ -19,7 +20,7 @@ module Bot.Util
     ) where
 
 import           BasicPrelude
-import qualified BitMEX                      as Mex
+import qualified BitMEX                         as Mex
     ( Accept (..)
     , BitMEXRequest (..)
     , ContentType (..)
@@ -63,33 +64,44 @@ import           Bot.OrderTemplates
 import           Bot.Types
     ( BitMEXBot (..)
     , BotState (..)
+    , NewExecutionQueue (..)
     , OrderID (..)
     , PositionType (..)
     , Rule (..)
-    , unExecQueue
     )
-import           Control.Concurrent          (threadDelay)
+import           Control.Concurrent
+    ( threadDelay
+    )
+import           Control.Concurrent.STM.TBQueue
+    ( TBQueue
+    , readTBQueue
+    , writeTBQueue
+    )
 import           Control.Concurrent.STM.TVar
     ( readTVar
     , writeTVar
     )
-import qualified Control.Monad.Reader        as R
+import qualified Control.Monad.Reader           as R
     ( ask
     , asks
     , runReaderT
     )
-import           Control.Monad.STM           (atomically)
-import           Data.Aeson                  (encode)
-import qualified Data.ByteString.Lazy        as LBS
+import           Control.Monad.STM
+    ( STM
+    , atomically
+    , retry
+    )
+import           Data.Aeson                     (encode)
+import qualified Data.ByteString.Lazy           as LBS
     ( ByteString
     )
-import qualified Data.Text                   as T (pack)
-import qualified Data.Vector                 as V (head)
+import qualified Data.Text                      as T (pack)
+import qualified Data.Vector                    as V (head)
 import           Lens.Micro
 import           Network.HTTP.Client
     ( responseStatus
     )
-import qualified Network.HTTP.Types.Status   as HTTP
+import qualified Network.HTTP.Types.Status      as HTTP
     ( Status (..)
     )
 
@@ -303,16 +315,15 @@ getOrderSize price balance =
     (convert XBT_to_USD price) *
     (convert XBt_to_XBT $ balance * 0.1)
 
-waitForExecution :: BitMEXBot ()
-waitForExecution = do
-    execQ <- R.asks newExecutionQueue
-    resp <- liftIO $ atomically $ readResponse $ unExecQueue execQ
+waitForExecution :: NewExecutionQueue -> STM ()
+waitForExecution q = do
+    resp <- readResponse $ unExecQueue q
     case resp of
         Exe (TABLE {_data = execData}) -> do
             let (RespExecution {ordStatus = stat}) =
                     V.head execData
             when (stat == Just "New") $ return ()
-            waitForExecution
+            retry
 
 makeMarket ::
        Integer
@@ -364,7 +375,7 @@ makeMarket limit orderSize ask bid = do
                     responseStatus resp
             if code == 200
                 then do
-                    waitForExecution
+                    liftIO $ atomically $ waitForExecution newExecutionQueue
                 else if (code == 503 || code == 502)
                          then do
                              liftIO $ threadDelay 500000
