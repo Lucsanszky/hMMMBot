@@ -66,9 +66,9 @@ trade = do
         sellCost <-
             liftIO $ atomically $ readTVar openSellCost
         let newBestAsk = head $ head obAsks'
-            askL2 = head $ obAsks' ! 1
+            worstAsk  = head $ last obAsks'
             newBestBid = head $ head obBids'
-            bidL2 = head $ obBids' ! 1
+            worstBid = head $ last obBids'
             orderSize =
                 getOrderSize newBestAsk $ fromIntegral total * lev
             lev = Mex.unLeverage leverage
@@ -81,7 +81,7 @@ trade = do
                     convert
                         XBt_to_XBT
                         (fromIntegral buyCost)
-            when ((abs buyAvg) < bidL2) $ do
+            when ((abs buyAvg) < worstBid - 2) $ do
                 cancelLimitOrders "Buy"
                 return ()
         when (sellQty /= 0 && sellCost /= 0) $ do
@@ -90,14 +90,14 @@ trade = do
                     convert
                         XBt_to_XBT
                         (fromIntegral sellCost)
-            when ((abs sellAvg) > askL2) $ do
+            when ((abs sellAvg) > worstAsk + 2) $ do
                 cancelLimitOrders "Sell"
                 return ()
         available <-
             liftIO $ atomically $ readTVar availableBalance
         if (convert XBt_to_XBT (fromIntegral available)) >
            convert USD_to_XBT newBestAsk *
-           (fromIntegral orderSize)
+           (fromIntegral orderSize) / lev
             then makeMarket
                      limit
                      orderSize
