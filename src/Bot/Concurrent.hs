@@ -114,7 +114,6 @@ processResponse (BotState {..}) msg = do
                                     (unExecQueue
                                          newExecutionQueue)
                                     (Just execResp)
-                            return ()
                 _ -> return ()
 
 readResponse :: TBQueue (Maybe Response) -> STM Response

@@ -322,8 +322,9 @@ waitForExecution q = do
         Exe (TABLE {_data = execData}) -> do
             let (RespExecution {ordStatus = stat}) =
                     V.head execData
-            when (stat == Just "New") $ return ()
-            retry
+            case stat of
+                Just "New" -> return ()
+                _ -> retry
 
 makeMarket ::
        Integer
