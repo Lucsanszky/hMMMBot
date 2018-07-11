@@ -97,14 +97,18 @@ processResponse (BotState {..}) msg = do
                 execResp@(Exe (TABLE {_data = execData})) -> do
                     case execData !? 0 of
                         Nothing -> return ()
-                        Just (RespExecution {triggered = text}) ->
-                            case text of
-                                Just "StopOrderTriggered" ->
-                                    atomically $
-                                    writeTBQueue
-                                        (unSLWQueue slwQueue)
-                                        (Just execResp)
-                                _ -> return ()
+                        Just (RespExecution { triggered = text
+                                            , ordStatus = stat
+                                            }) -> do
+                            when
+                                (text ==
+                                 Just "StopOrderTriggered" ||
+                                 stat == Just "New") $
+                                atomically $
+                                writeTBQueue
+                                    (unSLWQueue slwQueue)
+                                    (Just execResp)
+                            return ()
                 _ -> return ()
 
 readResponse :: TBQueue (Maybe Response) -> STM Response

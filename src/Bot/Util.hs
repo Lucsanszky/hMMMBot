@@ -50,8 +50,11 @@ import qualified BitMEX                      as Mex
 import           BitMEXClient
     ( BitMEXReader (..)
     , BitMEXWrapperConfig
+    , RespExecution (..)
+    , Response (Exe)
     , Side (..)
     , Symbol (..)
+    , TABLE (..)
     , makeRequest
     )
 import           Bot.Concurrent
@@ -63,6 +66,7 @@ import           Bot.Types
     , OrderID (..)
     , PositionType (..)
     , Rule (..)
+    , unSLWQueue
     )
 import           Control.Concurrent          (threadDelay)
 import           Control.Concurrent.STM.TVar
@@ -80,6 +84,7 @@ import qualified Data.ByteString.Lazy        as LBS
     ( ByteString
     )
 import qualified Data.Text                   as T (pack)
+import qualified Data.Vector                 as V (head)
 import           Lens.Micro
 import           Network.HTTP.Client
     ( responseStatus
@@ -129,8 +134,7 @@ cancelOrders ids = do
     BitMEXBot . lift $ makeRequest orderRequest
 
 placeBulkOrder ::
-       [Mex.Order]
-    -> BitMEXBot (Mex.MimeResult [Mex.Order])
+       [Mex.Order] -> BitMEXBot (Mex.MimeResult [Mex.Order])
 placeBulkOrder orders = do
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderNewBulk
@@ -153,8 +157,7 @@ amendOrder order = do
     BitMEXBot . lift $ makeRequest orderRequest
 
 bulkAmendOrders ::
-       [Mex.Order]
-    -> BitMEXBot (Mex.MimeResult [Mex.Order])
+       [Mex.Order] -> BitMEXBot (Mex.MimeResult [Mex.Order])
 bulkAmendOrders orders = do
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderAmendBulk
@@ -166,8 +169,7 @@ bulkAmendOrders orders = do
     BitMEXBot . lift $ makeRequest orderRequest
 
 placeStopOrder ::
-       BitMEXBot (Mex.MimeResult Mex.Order)
-    -> BitMEXBot ()
+       BitMEXBot (Mex.MimeResult Mex.Order) -> BitMEXBot ()
 placeStopOrder order = do
     Mex.MimeResult {Mex.mimeResult = res} <- order
     case res of
@@ -179,8 +181,7 @@ placeStopOrder order = do
                 atomically $
                 writeTVar o (OrderID (Just oid))
 
-amendStopOrder ::
-       Maybe Text -> Maybe Double -> BitMEXBot ()
+amendStopOrder :: Maybe Text -> Maybe Double -> BitMEXBot ()
 amendStopOrder oid stopPx = do
     let newStopLoss =
             (orderWithId (OrderID oid))
@@ -302,17 +303,16 @@ getOrderSize price balance =
     (convert XBT_to_USD price) *
     (convert XBt_to_XBT $ balance * 0.1)
 
-incrementQty ::
-       Integer
-    -> Maybe Text
-    -> [(Maybe Text, Maybe Text)]
-    -> Integer
-incrementQty orderSize side =
-    sum .
-    map (\(stat, side') ->
-             if (stat == Just "New" && side == side')
-                 then orderSize
-                 else 0)
+waitForExecution :: BitMEXBot ()
+waitForExecution = do
+    execQ <- R.asks slwQueue
+    resp <- liftIO $ atomically $ readResponse $ unSLWQueue execQ
+    case resp of
+        Exe (TABLE {_data = execData}) -> do
+            let (RespExecution {ordStatus = stat}) =
+                    V.head execData
+            when (stat == Just "New") $ return ()
+            waitForExecution
 
 makeMarket ::
        Integer
@@ -364,56 +364,7 @@ makeMarket limit orderSize ask bid = do
                     responseStatus resp
             if code == 200
                 then do
-                    let Right orders = res
-                        pairs =
-                            map
-                                (\o ->
-                                     ( o ^.
-                                       Mex.orderOrdStatusL
-                                     , o ^. Mex.orderSideL))
-                                orders
-                    liftIO $
-                        atomically $ do
-                            updateVar openBuys $
-                                buys' +
-                                incrementQty
-                                    orderSize
-                                    (Just "Buy")
-                                    pairs
-                    liftIO $
-                        atomically $ do
-                            updateVar openBuyCost $
-                                openBC -
-                                (incrementQty
-                                     (floor $
-                                      convert
-                                          XBT_to_XBt
-                                          (fromIntegral
-                                               orderSize /
-                                           bid)))
-                                    (Just "Buy")
-                                    pairs
-                    liftIO $
-                        atomically $ do
-                            updateVar openSells $
-                                sells' +
-                                incrementQty
-                                    orderSize
-                                    (Just "Sell")
-                                    pairs
-                    liftIO $
-                        atomically $ do
-                            updateVar openSellCost $
-                                openSC -
-                                (incrementQty
-                                     (floor $
-                                      convert
-                                          XBT_to_XBt
-                                          (fromIntegral
-                                               orderSize /
-                                           ask)))
-                                    (Just "Sell")
-                                    pairs
+                    waitForExecution
                 else if (code == 503 || code == 502)
                          then do
                              liftIO $ threadDelay 500000
