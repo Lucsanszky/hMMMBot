@@ -66,7 +66,7 @@ import           Bot.Types
     , OrderID (..)
     , PositionType (..)
     , Rule (..)
-    , unSLWQueue
+    , unExecQueue
     )
 import           Control.Concurrent          (threadDelay)
 import           Control.Concurrent.STM.TVar
@@ -305,8 +305,8 @@ getOrderSize price balance =
 
 waitForExecution :: BitMEXBot ()
 waitForExecution = do
-    execQ <- R.asks slwQueue
-    resp <- liftIO $ atomically $ readResponse $ unSLWQueue execQ
+    execQ <- R.asks newExecutionQueue
+    resp <- liftIO $ atomically $ readResponse $ unExecQueue execQ
     case resp of
         Exe (TABLE {_data = execData}) -> do
             let (RespExecution {ordStatus = stat}) =

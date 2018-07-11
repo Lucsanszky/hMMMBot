@@ -138,6 +138,7 @@ initBot leverage conn = do
     riskManagerQueue <- liftIO $ atomically $ newTBQueue 100
     slwQueue <- liftIO $ atomically $ newTBQueue 100
     pnlQueue <- liftIO $ atomically $ newTBQueue 100
+    newExecutionQueue <- liftIO $ atomically $ newTBQueue 1
     prevPosition <- liftIO $ atomically $ newTVar None
     positionSize <- liftIO $ atomically $ newTVar 0
     obAsks <- liftIO $ atomically $ newTVar empty
@@ -160,6 +161,7 @@ initBot leverage conn = do
             , riskManagerQueue =
                   RiskManagerQueue riskManagerQueue
             , slwQueue = StopLossWatcherQueue slwQueue
+            , newExecutionQueue = NewExecutionQueue newExecutionQueue
             , pnlQueue = PnLQueue pnlQueue
             , prevPosition = prevPosition
             , positionSize = positionSize

@@ -102,11 +102,17 @@ processResponse (BotState {..}) msg = do
                                             }) -> do
                             when
                                 (text ==
-                                 Just "StopOrderTriggered" ||
-                                 stat == Just "New") $
+                                 Just "StopOrderTriggered") $ do
+                                atomically $
+                                    writeTBQueue
+                                        (unSLWQueue slwQueue)
+                                        (Just execResp)
+                                return ()
+                            when (stat == Just "New") $
                                 atomically $
                                 writeTBQueue
-                                    (unSLWQueue slwQueue)
+                                    (unExecQueue
+                                         newExecutionQueue)
                                     (Just execResp)
                             return ()
                 _ -> return ()
