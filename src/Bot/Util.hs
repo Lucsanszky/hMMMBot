@@ -78,7 +78,8 @@ import           Control.Concurrent.STM.TBQueue
     , writeTBQueue
     )
 import           Control.Concurrent.STM.TVar
-    ( readTVar
+    ( TVar
+    , readTVar
     , writeTVar
     )
 import qualified Control.Monad.Reader           as R
@@ -325,6 +326,13 @@ waitForExecution q = do
             case stat of
                 Just "New" -> return ()
                 _ -> retry
+waitForOpenOrderChange :: (Integer, Integer) -> (TVar Integer, TVar Integer) -> STM ()
+waitForOpenOrderChange (buyQty, sellQty) (openBuys, openSells) = do
+    buyQty' <- readTVar openBuys
+    sellQty' <- readTVar openSells
+    if (buyQty' /= buyQty || sellQty' /= sellQty)
+       then return ()
+       else retry
 
 makeMarket ::
        Integer
@@ -376,7 +384,11 @@ makeMarket limit orderSize ask bid = do
                     responseStatus resp
             if code == 200
                 then do
-                    liftIO $ atomically $ waitForExecution newExecutionQueue
+                    liftIO $
+                        atomically $
+                        waitForOpenOrderChange
+                            (buys', sells')
+                            (openBuys, openSells)
                 else if (code == 503 || code == 502)
                          then do
                              liftIO $ threadDelay 500000
