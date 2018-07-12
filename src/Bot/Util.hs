@@ -24,6 +24,7 @@ import qualified BitMEX                         as Mex
     ( Accept (..)
     , BitMEXRequest (..)
     , ContentType (..)
+    , Error (..)
     , Filter (..)
     , Leverage
     , MimeError (..)
@@ -34,6 +35,8 @@ import qualified BitMEX                         as Mex
     , Position
     , Symbol (..)
     , applyOptionalParam
+    , errorErrorL
+    , errorErrorMessageL
     , orderAmend
     , orderAmendBulk
     , orderCancel
@@ -89,7 +92,10 @@ import           Control.Monad.STM
     , atomically
     , retry
     )
-import           Data.Aeson                     (encode)
+import           Data.Aeson
+    ( decode
+    , encode
+    )
 import qualified Data.ByteString.Lazy           as LBS
     ( ByteString
     )
@@ -97,7 +103,8 @@ import qualified Data.Text                      as T (pack)
 import qualified Data.Vector                    as V (head)
 import           Lens.Micro
 import           Network.HTTP.Client
-    ( responseStatus
+    ( responseBody
+    , responseStatus
     )
 import qualified Network.HTTP.Types.Status      as HTTP
     ( Status (..)
@@ -139,8 +146,9 @@ cancelOrders ids = do
                 (Mex.ContentType Mex.MimeJSON)
                 (Mex.Accept Mex.MimeJSON)
         orderRequest =
-            Mex._setBodyLBS orderTemplate $
-            "{\"orderID\": " <> encode ids <> "}"
+            Mex._setBodyLBS orderTemplate $ "{\"orderID\": " <>
+            encode ids <>
+            "}"
     BitMEXBot . lift $ makeRequest orderRequest
 
 placeBulkOrder ::
@@ -151,8 +159,9 @@ placeBulkOrder orders = do
                 (Mex.ContentType Mex.MimeJSON)
                 (Mex.Accept Mex.MimeJSON)
         orderRequest =
-            Mex._setBodyLBS orderTemplate $
-            "{\"orders\": " <> encode orders <> "}"
+            Mex._setBodyLBS orderTemplate $ "{\"orders\": " <>
+            encode orders <>
+            "}"
     BitMEXBot . lift $ makeRequest orderRequest
 
 amendOrder ::
@@ -174,8 +183,9 @@ bulkAmendOrders orders = do
                 (Mex.ContentType Mex.MimeJSON)
                 (Mex.Accept Mex.MimeJSON)
         orderRequest =
-            Mex._setBodyLBS orderTemplate $
-            "{\"orders\": " <> encode orders <> "}"
+            Mex._setBodyLBS orderTemplate $ "{\"orders\": " <>
+            encode orders <>
+            "}"
     BitMEXBot . lift $ makeRequest orderRequest
 
 placeStopOrder ::
@@ -183,12 +193,11 @@ placeStopOrder ::
 placeStopOrder order = do
     Mex.MimeResult {Mex.mimeResult = res} <- order
     case res of
-        Left (Mex.MimeError {mimeError = s}) -> do
-            kill s
+        Left (Mex.MimeError {mimeError = s}) ->
+            placeStopOrder order
         Right (Mex.Order {orderOrderId = oid}) ->
             R.asks stopOrderId >>= \o ->
-                liftIO $
-                atomically $
+                liftIO $ atomically $
                 writeTVar o (OrderID (Just oid))
 
 amendStopOrder :: Maybe Text -> Maybe Double -> BitMEXBot ()
@@ -202,13 +211,48 @@ amendStopOrder oid stopPx = do
             responseStatus resp
     if code == 200
         then return ()
+        else if code == 400
+                 then do
+                     let Just err =
+                             decode $ responseBody resp :: Maybe Mex.Error
+                         errMsg =
+                             err ^. Mex.errorErrorL .
+                             Mex.errorErrorMessageL
+                     if errMsg == Just "Invalid ordStatus"
+                         then return ()
+                         else amendStopOrder oid stopPx
+                 else kill "amending stop order failed"
+
+    if code == 200
+        then return ()
         else do
             kill "amending failed"
 
 cancelStopOrder :: OrderID -> BitMEXBot ()
-cancelStopOrder (OrderID (Just oid)) = do
-    cancelOrders [oid] >> R.asks stopOrderId >>= \o ->
-        liftIO $ atomically $ writeTVar o (OrderID Nothing)
+cancelStopOrder o@(OrderID (Just oid)) = do
+    Mex.MimeResult {Mex.mimeResultResponse = resp} <-
+        cancelOrders [oid]
+    let HTTP.Status {statusCode = code} =
+            responseStatus resp
+    if code == 200
+        then R.asks stopOrderId >>= \o ->
+                 liftIO $ atomically $
+                 writeTVar o (OrderID Nothing)
+        else if code == 400
+                 then do
+                     let Just err =
+                             decode $ responseBody resp :: Maybe Mex.Error
+                         errMsg =
+                             err ^. Mex.errorErrorL .
+                             Mex.errorErrorMessageL
+                     if errMsg == Just "Invalid ordStatus"
+                         then R.asks stopOrderId >>= \o ->
+                                  liftIO $ atomically $
+                                  writeTVar
+                                      o
+                                      (OrderID Nothing)
+                         else cancelStopOrder o
+                 else kill "cancelling stop order failed"
 cancelStopOrder _ = return ()
 
 cancelLimitOrders :: Text -> BitMEXBot ()
@@ -224,11 +268,24 @@ cancelLimitOrders side = do
                    side <>
                    "\"}")) :: (ByteString, Maybe Text)
         req = Mex.setQuery template $ Mex.toQuery query
-    Mex.MimeResult {Mex.mimeResult = res} <-
-        BitMEXBot . lift $ makeRequest req
-    case res of
-        Left (Mex.MimeError {mimeError = s}) -> kill s
-        Right _                              -> return ()
+    Mex.MimeResult { Mex.mimeResult = res
+                   , Mex.mimeResultResponse = resp
+                   } <- BitMEXBot . lift $ makeRequest req
+    let HTTP.Status {statusCode = code} =
+            responseStatus resp
+    if code == 200
+        then return ()
+        else if code == 400
+                 then do
+                     let Just err =
+                             decode $ responseBody resp :: Maybe Mex.Error
+                         errMsg =
+                             err ^. Mex.errorErrorL .
+                             Mex.errorErrorMessageL
+                     if errMsg == Just "Invalid ordStatus"
+                         then return ()
+                         else cancelLimitOrders side
+                 else kill "cancelling limit orders failed"
 
 kill :: String -> BitMEXBot ()
 kill msg = do
@@ -276,7 +333,8 @@ updateLeverage sym lev = do
                 lev
         leverageRequest =
             Mex._setBodyLBS leverageTemplate $
-            "{\"leverage\": " <> encode (Mex.unLeverage lev) <>
+            "{\"leverage\": " <>
+            encode (Mex.unLeverage lev) <>
             ", \"symbol\": " <>
             (encode $ (T.pack . show) sym) <>
             "}"
@@ -287,23 +345,24 @@ updateLeverage sym lev = do
 -------------------------------------------------------------
 getLimit :: Double -> Double -> Integer
 getLimit price balance =
-    floor $
-    (convert XBT_to_USD price) *
+    floor $ (convert XBT_to_USD price) *
     (convert XBt_to_XBT $ balance * 0.35)
 
 getOrderSize :: Double -> Double -> Integer
 getOrderSize price balance =
-    floor $
-    (convert XBT_to_USD price) *
+    floor $ (convert XBT_to_USD price) *
     (convert XBt_to_XBT $ balance * 0.07)
 
-waitForOpenOrderChange :: (Integer, Integer) -> (TVar Integer, TVar Integer) -> STM ()
+waitForOpenOrderChange ::
+       (Integer, Integer)
+    -> (TVar Integer, TVar Integer)
+    -> STM ()
 waitForOpenOrderChange (buyQty, sellQty) (openBuys, openSells) = do
     buyQty' <- readTVar openBuys
     sellQty' <- readTVar openSells
     if (buyQty' /= buyQty || sellQty' /= sellQty)
-       then return ()
-       else retry
+        then return ()
+        else retry
 
 makeMarket ::
        Integer
@@ -355,8 +414,7 @@ makeMarket limit orderSize ask bid = do
                     responseStatus resp
             if code == 200
                 then do
-                    liftIO $
-                        atomically $
+                    liftIO $ atomically $
                         waitForOpenOrderChange
                             (buys', sells')
                             (openBuys, openSells)
