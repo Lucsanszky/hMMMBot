@@ -77,7 +77,6 @@ processResponse (BotState {..}) msg = do
                         let Just sc = sellCost
                         atomically $
                             updateVar openSellCost sc
-                    return ()
                 marginResp@(M (TABLE {_data = marginData})) -> do
                     let RespMargin { realisedPnl = rpnl
                                    , availableMargin = ab
@@ -107,13 +106,6 @@ processResponse (BotState {..}) msg = do
                                     writeTBQueue
                                         (unSLWQueue slwQueue)
                                         (Just execResp)
-                                return ()
-                            when (stat == Just "New") $
-                                atomically $
-                                writeTBQueue
-                                    (unExecQueue
-                                         newExecutionQueue)
-                                    (Just execResp)
                 _ -> return ()
 
 readResponse :: TBQueue (Maybe Response) -> STM Response

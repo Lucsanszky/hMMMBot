@@ -4,11 +4,10 @@ module Bot.Types
     , StopPx(..)
     , LimitPx(..)
     , Qty(..)
-    , Rule (..)
+    , Rule(..)
     , ClientID(..)
     , LinkID(..)
     , OrderID(..)
-    , NewExecutionQueue(..)
     , PositionType(..)
     , PnLQueue(..)
     , RiskManagerQueue(..)
@@ -68,35 +67,37 @@ newtype PnLQueue = PnLQueue
     { unPnlQueue :: (TBQueue (Maybe Response))
     }
 
-newtype NewExecutionQueue = NewExecutionQueue
-    { unExecQueue :: (TBQueue (Maybe Response))
-    }
-
-data PositionType = Long | Short | None
+data PositionType
+    = Long
+    | Short
+    | None
     deriving (Eq, Show)
 
-data Rule = XBt_to_XBT | XBT_to_XBt | USD_to_XBT | XBT_to_USD
+data Rule
+    = XBt_to_XBT
+    | XBT_to_XBt
+    | USD_to_XBT
+    | XBT_to_USD
 
 data BotState = BotState
-    { connection        :: !Connection
-    , riskManagerQueue  :: !RiskManagerQueue
-    , slwQueue          :: !StopLossWatcherQueue
-    , newExecutionQueue :: !NewExecutionQueue
-    , pnlQueue          :: !PnLQueue
-    , realPnl           :: !(TVar Integer)
-    , prevBalance       :: !(TVar Integer)
-    , availableBalance  :: !(TVar Integer)
-    , walletBalance     :: !(TVar Integer)
-    , prevPosition      :: !(TVar PositionType)
-    , positionSize      :: !(TVar Integer)
-    , obAsks            :: !(TVar (Vector (Vector Double)))
-    , obBids            :: !(TVar (Vector (Vector Double)))
-    , openBuys          :: !(TVar Integer)
-    , openSells         :: !(TVar Integer)
-    , openBuyCost       :: !(TVar Integer)
-    , openSellCost      :: !(TVar Integer)
-    , stopOrderId       :: !(TVar OrderID)
-    , leverage          :: !Mex.Leverage
+    { connection       :: !Connection
+    , riskManagerQueue :: !RiskManagerQueue
+    , slwQueue         :: !StopLossWatcherQueue
+    , pnlQueue         :: !PnLQueue
+    , realPnl          :: !(TVar Integer)
+    , prevBalance      :: !(TVar Integer)
+    , availableBalance :: !(TVar Integer)
+    , walletBalance    :: !(TVar Integer)
+    , prevPosition     :: !(TVar PositionType)
+    , positionSize     :: !(TVar Integer)
+    , obAsks           :: !(TVar (Vector (Vector Double)))
+    , obBids           :: !(TVar (Vector (Vector Double)))
+    , openBuys         :: !(TVar Integer)
+    , openSells        :: !(TVar Integer)
+    , openBuyCost      :: !(TVar Integer)
+    , openSellCost     :: !(TVar Integer)
+    , stopOrderId      :: !(TVar OrderID)
+    , leverage         :: !Mex.Leverage
     }
 
 newtype BitMEXBot a = BitMEXBot

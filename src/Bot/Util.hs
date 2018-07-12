@@ -4,7 +4,6 @@ module Bot.Util
     , placeBulkOrder
     , cancelLimitOrders
     , getLimit
-
     , getOrderSize
     , updateLeverage
     , placeOrder
@@ -51,8 +50,6 @@ import qualified BitMEX                         as Mex
 import           BitMEXClient
     ( BitMEXReader (..)
     , BitMEXWrapperConfig
-    , RespExecution (..)
-    , Response (Exe)
     , Side (..)
     , Symbol (..)
     , TABLE (..)
@@ -64,7 +61,6 @@ import           Bot.OrderTemplates
 import           Bot.Types
     ( BitMEXBot (..)
     , BotState (..)
-    , NewExecutionQueue (..)
     , OrderID (..)
     , PositionType (..)
     , Rule (..)
@@ -316,16 +312,6 @@ getOrderSize price balance =
     (convert XBT_to_USD price) *
     (convert XBt_to_XBT $ balance * 0.1)
 
-waitForExecution :: NewExecutionQueue -> STM ()
-waitForExecution q = do
-    resp <- readResponse $ unExecQueue q
-    case resp of
-        Exe (TABLE {_data = execData}) -> do
-            let (RespExecution {ordStatus = stat}) =
-                    V.head execData
-            case stat of
-                Just "New" -> return ()
-                _ -> retry
 waitForOpenOrderChange :: (Integer, Integer) -> (TVar Integer, TVar Integer) -> STM ()
 waitForOpenOrderChange (buyQty, sellQty) (openBuys, openSells) = do
     buyQty' <- readTVar openBuys
