@@ -66,11 +66,12 @@ trade = do
         sellCost <-
             liftIO $ atomically $ readTVar openSellCost
         let newBestAsk = head $ head obAsks'
-            worstAsk  = head $ last obAsks'
+            worstAsk = head $ last obAsks'
             newBestBid = head $ head obBids'
             worstBid = head $ last obBids'
             orderSize =
-                getOrderSize newBestAsk $ fromIntegral total * lev
+                getOrderSize newBestAsk $
+                fromIntegral total * lev
             lev = Mex.unLeverage leverage
             limit =
                 getLimit newBestAsk $
@@ -97,7 +98,8 @@ trade = do
             liftIO $ atomically $ readTVar availableBalance
         if (convert XBt_to_XBT (fromIntegral available)) >
            convert USD_to_XBT newBestAsk *
-           (fromIntegral orderSize) / lev
+           (fromIntegral orderSize) /
+           lev
             then makeMarket
                      limit
                      orderSize
@@ -118,7 +120,10 @@ tradeLoop = do
             forever $ stopLossWatcher botState config
         pnl <- async $ forever $ pnlTracker botState config
         tr <- async $ forever $ trader botState config
-        mapM_ A.link [risk, slw, pnl, tr]
+        loss <-
+            async $
+            forever $ lossLimitUpdater botState config
+        mapM_ A.link [risk, slw, pnl, tr, loss]
     loop
   where
     loop = loop

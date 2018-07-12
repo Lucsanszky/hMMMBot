@@ -2,6 +2,7 @@ module Bot.RiskManager
     ( riskManager
     , stopLossWatcher
     , pnlTracker
+    , lossLimitUpdater
     ) where
 
 import           BasicPrelude                hiding (head)
@@ -36,6 +37,7 @@ import           Bot.Util
     , restart
     , unWrapBotWith
     )
+import           Control.Concurrent          (threadDelay)
 import           Control.Concurrent.STM.TVar
     ( readTVar
     , writeTVar
@@ -47,8 +49,7 @@ import qualified Control.Monad.Reader        as R
 import           Control.Monad.STM           (atomically)
 import           Data.Vector                 (head, (!?))
 
-manageStopLoss ::
-       Mex.Order -> PositionType -> BitMEXBot ()
+manageStopLoss :: Mex.Order -> PositionType -> BitMEXBot ()
 manageStopLoss newStopLoss newPos = do
     OrderID oid <-
         R.asks stopOrderId >>=
@@ -127,6 +128,14 @@ stopLossWatcher botState@BotState {..} config = do
                         _ -> return ()
         _ -> return ()
 
+-- | Update the balance every hour
+lossLimitUpdater :: BotState -> BitMEXWrapperConfig -> IO ()
+lossLimitUpdater botState@BotState {..} config = do
+    threadDelay 3600000000
+    prev <- liftIO $ atomically $ readTVar prevBalance
+    current <- liftIO $ atomically $ readTVar walletBalance
+    liftIO $ atomically $ writeTVar prevBalance current
+
 pnlTracker :: BotState -> BitMEXWrapperConfig -> IO ()
 pnlTracker botState@BotState {..} config = do
     prev <- liftIO $ atomically $ readTVar prevBalance
@@ -137,5 +146,4 @@ pnlTracker botState@BotState {..} config = do
                 (kill "lost too much")
                 botState
                 config
-        else
-            return ()
+        else return ()
