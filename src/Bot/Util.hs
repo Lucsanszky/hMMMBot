@@ -414,10 +414,13 @@ makeMarket limit orderSize ask bid = do
                     responseStatus resp
             if code == 200
                 then do
-                    liftIO $ atomically $
-                        waitForOpenOrderChange
-                            (buys', sells')
-                            (openBuys, openSells)
+                    let Right orders = res
+                        stats = map ((^. Mex.orderOrdStatusL)) orders
+                    unless (all (== Just "Canceled") stats) $
+                        liftIO $ atomically $
+                            waitForOpenOrderChange
+                                (buys', sells')
+                                (openBuys, openSells)
                 else if (code == 503 || code == 502)
                          then do
                              liftIO $ threadDelay 500000
