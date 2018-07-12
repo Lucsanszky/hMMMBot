@@ -66,9 +66,7 @@ trade = do
         sellCost <-
             liftIO $ atomically $ readTVar openSellCost
         let newBestAsk = head $ head obAsks'
-            worstAsk = head $ last obAsks'
             newBestBid = head $ head obBids'
-            worstBid = head $ last obBids'
             orderSize =
                 getOrderSize newBestAsk $
                 fromIntegral total * lev
@@ -82,8 +80,13 @@ trade = do
                     convert
                         XBt_to_XBT
                         (fromIntegral buyCost)
-            when ((abs buyAvg) < worstBid - 3) $ do
+            when ((abs buyAvg) < newBestBid - 2.5) $ do
                 cancelLimitOrders "Buy"
+                makeMarket
+                    limit
+                    buyQty
+                    newBestAsk
+                    newBestBid
                 return ()
         when (sellQty /= 0 && sellCost /= 0) $ do
             let sellAvg =
@@ -91,8 +94,13 @@ trade = do
                     convert
                         XBt_to_XBT
                         (fromIntegral sellCost)
-            when ((abs sellAvg) > worstAsk + 3) $ do
+            when ((abs sellAvg) > newBestAsk + 2.5) $ do
                 cancelLimitOrders "Sell"
+                makeMarket
+                    limit
+                    sellQty
+                    newBestAsk
+                    newBestBid
                 return ()
         available <-
             liftIO $ atomically $ readTVar availableBalance
