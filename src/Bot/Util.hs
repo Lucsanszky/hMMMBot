@@ -227,23 +227,7 @@ cancelLimitOrders side = do
         BitMEXBot . lift $ makeRequest req
     case res of
         Left (Mex.MimeError {mimeError = s}) -> kill s
-        Right _ -> do
-            if side == "Buy"
-                then do
-                    openBuys <- R.asks openBuys
-                    openBuyCost <- R.asks openBuyCost
-                    liftIO $
-                        atomically $ updateVar openBuys 0
-                    liftIO $
-                        atomically $ updateVar openBuyCost 0
-                else do
-                    openSells <- R.asks openSells
-                    openSellCost <- R.asks openSellCost
-                    liftIO $
-                        atomically $ updateVar openSells 0
-                    liftIO $
-                        atomically $
-                        updateVar openSellCost 0
+        Right _                              -> return ()
 
 kill :: String -> BitMEXBot ()
 kill msg = do
