@@ -84,6 +84,11 @@ trade = do
                         (fromIntegral buyCost)
             when ((abs buyAvg) < worstBid - 3) $ do
                 cancelLimitOrders "Buy"
+                liftIO $
+                    atomically $
+                    waitForOpenOrderChange
+                        (buyQty, sellQty)
+                        (openBuys, openSells)
                 return ()
         when (sellQty /= 0 && sellCost /= 0) $ do
             let sellAvg =
@@ -93,6 +98,11 @@ trade = do
                         (fromIntegral sellCost)
             when ((abs sellAvg) > worstAsk + 3) $ do
                 cancelLimitOrders "Sell"
+                liftIO $
+                    atomically $
+                    waitForOpenOrderChange
+                        (buyQty, sellQty)
+                        (openBuys, openSells)
                 return ()
         available <-
             liftIO $ atomically $ readTVar availableBalance

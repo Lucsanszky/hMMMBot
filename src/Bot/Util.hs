@@ -5,6 +5,7 @@ module Bot.Util
     , cancelLimitOrders
     , getLimit
     , getOrderSize
+    , waitForOpenOrderChange
     , updateLeverage
     , placeOrder
     , amendStopOrder
