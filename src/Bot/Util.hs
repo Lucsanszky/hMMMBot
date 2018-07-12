@@ -222,7 +222,6 @@ amendStopOrder oid stopPx = do
                          then return ()
                          else amendStopOrder oid stopPx
                  else kill "amending stop order failed"
-
     if code == 200
         then return ()
         else do
@@ -415,12 +414,16 @@ makeMarket limit orderSize ask bid = do
             if code == 200
                 then do
                     let Right orders = res
-                        stats = map ((^. Mex.orderOrdStatusL)) orders
+                        stats =
+                            map
+                                ((^. Mex.orderOrdStatusL))
+                                orders
                     unless (all (== Just "Canceled") stats) $
-                        liftIO $ atomically $
-                            waitForOpenOrderChange
-                                (buys', sells')
-                                (openBuys, openSells)
+                        liftIO $
+                        atomically $
+                        waitForOpenOrderChange
+                            (buys', sells')
+                            (openBuys, openSells)
                 else if (code == 503 || code == 502)
                          then do
                              liftIO $ threadDelay 500000
