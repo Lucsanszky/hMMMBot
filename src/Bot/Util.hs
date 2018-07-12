@@ -304,13 +304,13 @@ getLimit :: Double -> Double -> Integer
 getLimit price balance =
     floor $
     (convert XBT_to_USD price) *
-    (convert XBt_to_XBT $ balance * 0.4)
+    (convert XBt_to_XBT $ balance * 0.25)
 
 getOrderSize :: Double -> Double -> Integer
 getOrderSize price balance =
     floor $
     (convert XBT_to_USD price) *
-    (convert XBt_to_XBT $ balance * 0.1)
+    (convert XBt_to_XBT $ balance * 0.05)
 
 waitForOpenOrderChange :: (Integer, Integer) -> (TVar Integer, TVar Integer) -> STM ()
 waitForOpenOrderChange (buyQty, sellQty) (openBuys, openSells) = do
