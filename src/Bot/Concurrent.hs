@@ -2,6 +2,7 @@ module Bot.Concurrent
     ( processResponse
     , readResponse
     , updateVar
+    , waitForPriceChange
     ) where
 
 import           BasicPrelude                   hiding
@@ -45,8 +46,8 @@ processResponse (BotState {..}) msg = do
                                         , bids = newBids
                                         } =
                             head orderBookData
-                    atomically $ writeTVar obAsks newAsks
-                    atomically $ writeTVar obBids newBids
+                    atomically $ updateVar bestAsk (head $ head newAsks)
+                    atomically $ writeTVar bestBid (head $ head newBids)
                 posResp@(P (TABLE {_data = positionData})) -> do
                     let RespPosition { currentQty = currQty
                                      , openOrderBuyQty = buyQty
@@ -121,3 +122,14 @@ updateVar var newVal = do
     if currVal == newVal
         then return ()
         else writeTVar var newVal
+
+waitForPriceChange ::
+       (Double, Double)
+    -> (TVar Double, TVar Double)
+    -> STM ()
+waitForPriceChange (bid, ask) (bestBid, bestAsk) = do
+    newBid <- readTVar bestBid
+    newAsk <- readTVar bestAsk
+    if (bid /= newBid || ask /= newAsk)
+        then return ()
+        else retry
