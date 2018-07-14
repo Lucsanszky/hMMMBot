@@ -101,7 +101,7 @@ trader botState@BotState {..} config = do
                     convert
                         XBt_to_XBT
                         (fromIntegral buyCost)
-            when ((abs buyAvg) < newBestBid - 10) $ do
+            when ((abs buyAvg) < newBestBid - 0.25) $ do
                 resetOrder
                     botState
                     config
@@ -115,7 +115,7 @@ trader botState@BotState {..} config = do
                     convert
                         XBt_to_XBT
                         (fromIntegral sellCost)
-            when ((abs sellAvg) > newBestAsk + 10) $ do
+            when ((abs sellAvg) > newBestAsk + 0.25) $ do
                 resetOrder
                     botState
                     config
