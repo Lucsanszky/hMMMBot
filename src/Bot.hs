@@ -39,6 +39,7 @@ import           Data.Vector
     ( head
     , last
     , (!)
+    , (!?)
     )
 import           Network.HTTP.Client
     ( responseStatus
@@ -85,11 +86,8 @@ resetOrder botState config "Sell" orderSize price = do
             config
     return ()
 
-
-trader :: BotState -> BitMEXWrapperConfig -> IO ()
-trader botState@BotState {..} config = do
-    newBestAsk <- atomically $ readTVar bestAsk
-    newBestBid <- atomically $ readTVar bestBid
+trader :: BotState -> BitMEXWrapperConfig -> (Double, Double) -> IO ()
+trader botState@BotState {..} config (newBestAsk, newBestBid) = do
     when (newBestAsk /= 0 && newBestBid /= 0) $ do
         buyQty <- atomically $ readTVar openBuys
         buyCost <- atomically $ readTVar openBuyCost
@@ -133,36 +131,23 @@ trader botState@BotState {..} config = do
                 fromIntegral total * lev
         available <-
             liftIO $ atomically $ readTVar availableBalance
-        prevBestAsk <-
-            liftIO $ atomically $ readTVar prevAsk
-        prevBestBid <-
-            liftIO $ atomically $ readTVar prevBid
-        when
-            (prevBestBid /= newBestBid ||
-             prevBestAsk /= newBestAsk) $ do
-            if (convert XBt_to_XBT (fromIntegral available)) >
-               convert USD_to_XBT newBestAsk *
-               (fromIntegral orderSize) /
-               lev
-                then do
-                    unWrapBotWith
-                        (makeMarket
-                             limit
-                             orderSize
-                             newBestAsk
-                             newBestBid)
-                        botState
-                        config
-                    liftIO $
-                        atomically $
-                        updateVar prevAsk newBestAsk
-                    liftIO $
-                        atomically $
-                        updateVar prevBid newBestBid
-                else unWrapBotWith
-                         (kill "not enough funds")
-                         botState
-                         config
+        if (convert XBt_to_XBT (fromIntegral available)) >
+            convert USD_to_XBT newBestAsk *
+            (fromIntegral orderSize) /
+            lev
+            then do
+                unWrapBotWith
+                    (makeMarket
+                          limit
+                          orderSize
+                          newBestAsk
+                          newBestBid)
+                    botState
+                    config
+            else unWrapBotWith
+                      (kill "not enough funds")
+                      botState
+                      config
 
 tradeLoop :: BitMEXBot ()
 tradeLoop = do
@@ -175,14 +160,88 @@ tradeLoop = do
             async $
             forever $ stopLossWatcher botState config
         pnl <- async $ forever $ pnlTracker botState config
-        tr <- async $ forever $ trader botState config
         loss <-
             async $
             forever $ lossLimitUpdater botState config
-        mapM_ A.link [risk, slw, pnl, tr, loss]
+        mapM_ A.link [risk, slw, pnl, loss]
     loop
   where
     loop = loop
+
+processResponse :: BotState -> BitMEXWrapperConfig -> Maybe Response -> IO ()
+processResponse botState@BotState {..} config msg = do
+    case msg of
+        Nothing -> return ()
+        Just r ->
+            case r of
+                OB10 (TABLE {_data = orderBookData}) -> do
+                    let RespOrderBook10 { asks = newAsks
+                                        , bids = newBids
+                                        } =
+                            head orderBookData
+                        newBestAsk = head $ head newAsks
+                        newBestBid = head $ head newBids
+                    trader botState config (newBestAsk, newBestBid)
+                posResp@(P (TABLE {_data = positionData})) -> do
+                    let RespPosition { currentQty = currQty
+                                     , openOrderBuyQty = buyQty
+                                     , openOrderBuyCost = buyCost
+                                     , openOrderSellQty = sellQty
+                                     , openOrderSellCost = sellCost
+                                     } = head positionData
+                    when (currQty /= Nothing) $ do
+                        let Just q = map floor currQty
+                        atomically $
+                            updateVar positionSize q
+                        atomically $
+                            writeTBQueue
+                                (unRiskManagerQueue
+                                     riskManagerQueue)
+                                (Just posResp)
+                    when (buyQty /= Nothing) $ do
+                        let Just b = buyQty
+                        atomically $ updateVar openBuys b
+                    when (buyCost /= Nothing) $ do
+                        let Just bc = buyCost
+                        atomically $
+                            updateVar openBuyCost bc
+                    when (sellQty /= Nothing) $ do
+                        let Just s = sellQty
+                        atomically $ updateVar openSells s
+                    when (sellCost /= Nothing) $ do
+                        let Just sc = sellCost
+                        atomically $
+                            updateVar openSellCost sc
+                marginResp@(M (TABLE {_data = marginData})) -> do
+                    let RespMargin { realisedPnl = rpnl
+                                   , availableMargin = ab
+                                   , walletBalance = wb
+                                   } = head marginData
+                    when (rpnl /= Nothing) $ do
+                        let Just p = rpnl
+                        atomically $ writeTVar realPnl p
+                    when (ab /= Nothing) $ do
+                        let Just b = ab
+                        atomically $
+                            writeTVar availableBalance b
+                    when (wb /= Nothing) $ do
+                        let Just w = wb
+                        atomically $
+                            writeTVar walletBalance w
+                execResp@(Exe (TABLE {_data = execData})) -> do
+                    case execData !? 0 of
+                        Nothing -> return ()
+                        Just (RespExecution { triggered = text
+                                            , ordStatus = stat
+                                            }) -> do
+                            when
+                                (text ==
+                                 Just "StopOrderTriggered") $ do
+                                atomically $
+                                    writeTBQueue
+                                        (unSLWQueue slwQueue)
+                                        (Just execResp)
+                _ -> return ()
 
 initBot :: Mex.Leverage -> BitMEXApp ()
 initBot leverage conn = do
@@ -201,10 +260,6 @@ initBot leverage conn = do
     pnlQueue <- liftIO $ atomically $ newTBQueue 100
     prevPosition <- liftIO $ atomically $ newTVar None
     positionSize <- liftIO $ atomically $ newTVar 0
-    prevAsk <- liftIO $ atomically $ newTVar 0
-    bestAsk <- liftIO $ atomically $ newTVar 0
-    prevBid <- liftIO $ atomically $ newTVar 0
-    bestBid <- liftIO $ atomically $ newTVar 0
     realPnl <- liftIO $ atomically $ newTVar 0
     prevBalance <- liftIO $ atomically $ newTVar $ floor wb
     availableBalance <-
@@ -226,10 +281,6 @@ initBot leverage conn = do
             , pnlQueue = PnLQueue pnlQueue
             , prevPosition = prevPosition
             , positionSize = positionSize
-            , prevAsk = prevAsk
-            , bestAsk = bestAsk
-            , prevBid = prevBid
-            , bestBid = bestBid
             , realPnl = realPnl
             , prevBalance = prevBalance
             , availableBalance = availableBalance
@@ -258,5 +309,5 @@ initBot leverage conn = do
         async $
             forever $ do
                 msg <- getMessage conn config
-                processResponse botState msg
+                processResponse botState config msg
     R.runReaderT (runBot tradeLoop) botState
