@@ -152,8 +152,12 @@ cancelOrders ids = do
     BitMEXBot . lift $ makeRequest orderRequest
 
 placeBulkOrder ::
-       [Mex.Order] -> BitMEXBot (Mex.MimeResult [Mex.Order])
+       [Mex.Order] -> BitMEXBot ()
 placeBulkOrder orders = do
+    obs <- R.asks openBuys
+    oss <- R.asks openSells
+    buys' <- liftIO $ atomically $ readTVar obs
+    sells' <- liftIO $ atomically $ readTVar oss
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderNewBulk
                 (Mex.ContentType Mex.MimeJSON)
@@ -162,7 +166,29 @@ placeBulkOrder orders = do
             Mex._setBodyLBS orderTemplate $ "{\"orders\": " <>
             encode orders <>
             "}"
-    BitMEXBot . lift $ makeRequest orderRequest
+    Mex.MimeResult { Mex.mimeResultResponse = resp
+                    , Mex.mimeResult = res
+                    } <- BitMEXBot . lift $ makeRequest orderRequest
+    let HTTP.Status {statusCode = code} =
+            responseStatus resp
+    if code == 200
+        then do
+            let Right orders = res
+                stats =
+                    map
+                        ((^. Mex.orderOrdStatusL))
+                        orders
+            unless (all (== Just "Canceled") stats) $
+                liftIO $
+                atomically $
+                waitForOpenOrderChange
+                    (buys', sells')
+                    (obs, oss)
+        else if (code == 503 || code == 502)
+                  then do
+                      liftIO $ threadDelay 250000
+                      placeBulkOrder orders
+                  else kill "order didn't go through"
 
 amendOrder ::
        Mex.Order -> BitMEXBot (Mex.MimeResult Mex.Order)
@@ -374,8 +400,6 @@ makeMarket limit orderSize ask bid = do
     size <- liftIO $ atomically $ readTVar positionSize
     buys' <- liftIO $ atomically $ readTVar openBuys
     sells' <- liftIO $ atomically $ readTVar openSells
-    openBC <- liftIO $ atomically $ readTVar openBuyCost
-    openSC <- liftIO $ atomically $ readTVar openSellCost
     let buys =
             if size > 0
                 then size + buys'
@@ -406,27 +430,5 @@ makeMarket limit orderSize ask bid = do
                                                  orderSize)
                                             ask
                                       ]
-            Mex.MimeResult { Mex.mimeResultResponse = resp
-                           , Mex.mimeResult = res
-                           } <- placeBulkOrder orders
-            let HTTP.Status {statusCode = code} =
-                    responseStatus resp
-            if code == 200
-                then do
-                    let Right orders = res
-                        stats =
-                            map
-                                ((^. Mex.orderOrdStatusL))
-                                orders
-                    unless (all (== Just "Canceled") stats) $
-                        liftIO $
-                        atomically $
-                        waitForOpenOrderChange
-                            (buys', sells')
-                            (openBuys, openSells)
-                else if (code == 503 || code == 502)
-                         then do
-                             liftIO $ threadDelay 500000
-                             return ()
-                         else kill "order didn't go through"
+            placeBulkOrder orders
         else return ()

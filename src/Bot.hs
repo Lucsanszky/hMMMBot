@@ -47,22 +47,54 @@ import qualified Network.HTTP.Types.Status      as HTTP
     ( Status (..)
     )
 
+resetOrder ::
+       BotState
+    -> BitMEXWrapperConfig
+    -> Text
+    -> Integer
+    -> Double
+    -> IO ()
+resetOrder botState config "Buy" orderSize price = do
+    _ <-
+        async $
+        unWrapBotWith
+            (cancelLimitOrders "Buy")
+            botState
+            config
+    _ <-
+        async $
+        unWrapBotWith
+            (placeBulkOrder
+                 [limitBuy (fromIntegral orderSize) price])
+            botState
+            config
+    return ()
+resetOrder botState config "Sell" orderSize price = do
+    _ <-
+        async $
+        unWrapBotWith
+            (cancelLimitOrders "Sell")
+            botState
+            config
+    _ <-
+        async $
+        unWrapBotWith
+            (placeBulkOrder
+                 [limitSell (fromIntegral orderSize) price])
+            botState
+            config
+    return ()
+
+
 trader :: BotState -> BitMEXWrapperConfig -> IO ()
 trader botState@BotState {..} config = do
-    unWrapBotWith trade botState config
-
-trade :: BitMEXBot ()
-trade = do
-    BotState {..} <- R.ask
-    newBestAsk <- liftIO $ atomically $ readTVar bestAsk
-    newBestBid <- liftIO $ atomically $ readTVar bestBid
+    newBestAsk <- atomically $ readTVar bestAsk
+    newBestBid <- atomically $ readTVar bestBid
     when (newBestAsk /= 0 && newBestBid /= 0) $ do
-        buyQty <- liftIO $ atomically $ readTVar openBuys
-        buyCost <-
-            liftIO $ atomically $ readTVar openBuyCost
-        sellQty <- liftIO $ atomically $ readTVar openSells
-        sellCost <-
-            liftIO $ atomically $ readTVar openSellCost
+        buyQty <- atomically $ readTVar openBuys
+        buyCost <- atomically $ readTVar openBuyCost
+        sellQty <- atomically $ readTVar openSells
+        sellCost <- atomically $ readTVar openSellCost
         when (buyQty /= 0 && buyCost /= 0) $ do
             let buyAvg =
                     (fromIntegral buyQty) /
@@ -70,7 +102,12 @@ trade = do
                         XBt_to_XBT
                         (fromIntegral buyCost)
             when ((abs buyAvg) < newBestBid - 10) $ do
-                cancelLimitOrders "Buy"
+                resetOrder
+                    botState
+                    config
+                    "Buy"
+                    buyQty
+                    newBestBid
                 return ()
         when (sellQty /= 0 && sellCost /= 0) $ do
             let sellAvg =
@@ -79,10 +116,14 @@ trade = do
                         XBt_to_XBT
                         (fromIntegral sellCost)
             when ((abs sellAvg) > newBestAsk + 10) $ do
-                cancelLimitOrders "Sell"
+                resetOrder
+                    botState
+                    config
+                    "Sell"
+                    sellQty
+                    newBestAsk
                 return ()
-        total <-
-            liftIO $ atomically $ readTVar walletBalance
+        total <- atomically $ readTVar walletBalance
         let orderSize =
                 getOrderSize newBestAsk $
                 fromIntegral total * lev
@@ -104,18 +145,24 @@ trade = do
                (fromIntegral orderSize) /
                lev
                 then do
-                    makeMarket
-                        limit
-                        orderSize
-                        newBestAsk
-                        newBestBid
+                    unWrapBotWith
+                        (makeMarket
+                             limit
+                             orderSize
+                             newBestAsk
+                             newBestBid)
+                        botState
+                        config
                     liftIO $
                         atomically $
                         updateVar prevAsk newBestAsk
                     liftIO $
                         atomically $
                         updateVar prevBid newBestBid
-                else kill "not enough funds"
+                else unWrapBotWith
+                         (kill "not enough funds")
+                         botState
+                         config
 
 tradeLoop :: BitMEXBot ()
 tradeLoop = do
