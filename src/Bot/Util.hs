@@ -371,12 +371,12 @@ updateLeverage sym lev = do
 getLimit :: Double -> Double -> Integer
 getLimit price balance =
     floor $ (convert XBT_to_USD price) *
-    (convert XBt_to_XBT $ balance * 0.4)
+    (convert XBt_to_XBT $ balance * 0.2)
 
 getOrderSize :: Double -> Double -> Integer
 getOrderSize price balance =
     floor $ (convert XBT_to_USD price) *
-    (convert XBt_to_XBT $ balance * 0.08)
+    (convert XBt_to_XBT $ balance * 0.21)
 
 waitForOpenOrderChange ::
        (Integer, Integer)
