@@ -48,6 +48,7 @@ import qualified Network.HTTP.Types.Status      as HTTP
     ( Status (..)
     )
 
+-- TODO: figure out how to do this inside async,
 resetOrder ::
        BotState
     -> BitMEXWrapperConfig
@@ -56,37 +57,25 @@ resetOrder ::
     -> Double
     -> IO ()
 resetOrder botState config "Buy" orderSize price = do
-    _ <-
-        async $
-        unWrapBotWith
-            (cancelLimitOrders "Buy")
-            botState
-            config
-    _ <-
-        async $
-        unWrapBotWith
-            (placeBulkOrder
-                 [limitBuy (fromIntegral orderSize) price])
-            botState
-            config
-    return ()
+    unWrapBotWith
+        (cancelLimitOrders "Buy" >>
+         placeBulkOrder
+             [limitBuy (fromIntegral orderSize) price])
+        botState
+        config
 resetOrder botState config "Sell" orderSize price = do
-    _ <-
-        async $
-        unWrapBotWith
-            (cancelLimitOrders "Sell")
-            botState
-            config
-    _ <-
-        async $
-        unWrapBotWith
-            (placeBulkOrder
-                 [limitSell (fromIntegral orderSize) price])
-            botState
-            config
-    return ()
+    unWrapBotWith
+        (cancelLimitOrders "Sell" >>
+         placeBulkOrder
+             [limitSell (fromIntegral orderSize) price])
+        botState
+        config
 
-trader :: BotState -> BitMEXWrapperConfig -> (Double, Double) -> IO ()
+trader ::
+       BotState
+    -> BitMEXWrapperConfig
+    -> (Double, Double)
+    -> IO ()
 trader botState@BotState {..} config (newBestAsk, newBestBid) = do
     when (newBestAsk /= 0 && newBestBid /= 0) $ do
         buyQty <- atomically $ readTVar openBuys
@@ -132,22 +121,22 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) = do
         available <-
             liftIO $ atomically $ readTVar availableBalance
         if (convert XBt_to_XBT (fromIntegral available)) >
-            convert USD_to_XBT newBestAsk *
-            (fromIntegral orderSize) /
-            lev
+           convert USD_to_XBT newBestAsk *
+           (fromIntegral orderSize) /
+           lev
             then do
                 unWrapBotWith
                     (makeMarket
-                          limit
-                          orderSize
-                          newBestAsk
-                          newBestBid)
+                         limit
+                         orderSize
+                         newBestAsk
+                         newBestBid)
                     botState
                     config
             else unWrapBotWith
-                      (kill "not enough funds")
-                      botState
-                      config
+                     (kill "not enough funds")
+                     botState
+                     config
 
 tradeLoop :: BitMEXBot ()
 tradeLoop = do
@@ -168,7 +157,11 @@ tradeLoop = do
   where
     loop = loop
 
-processResponse :: BotState -> BitMEXWrapperConfig -> Maybe Response -> IO ()
+processResponse ::
+       BotState
+    -> BitMEXWrapperConfig
+    -> Maybe Response
+    -> IO ()
 processResponse botState@BotState {..} config msg = do
     case msg of
         Nothing -> return ()
@@ -181,7 +174,10 @@ processResponse botState@BotState {..} config msg = do
                             head orderBookData
                         newBestAsk = head $ head newAsks
                         newBestBid = head $ head newBids
-                    trader botState config (newBestAsk, newBestBid)
+                    trader
+                        botState
+                        config
+                        (newBestAsk, newBestBid)
                 posResp@(P (TABLE {_data = positionData})) -> do
                     let RespPosition { currentQty = currQty
                                      , openOrderBuyQty = buyQty
