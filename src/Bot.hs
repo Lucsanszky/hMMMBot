@@ -117,7 +117,7 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
         --             convert
         --                 XBt_to_XBT
         --                 (fromIntegral buyCost)
-        when (posSize > 0) $ do
+        when (posSize < 0) $ do
             resetOrder
                 botState
                 config
@@ -131,7 +131,7 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
         --             convert
         --                 XBt_to_XBT
         --                 (fromIntegral sellCost)
-        when (posSize < 0) $ do
+        when (posSize > 0) $ do
             resetOrder
                 botState
                 config
