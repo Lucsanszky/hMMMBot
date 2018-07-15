@@ -57,25 +57,41 @@ resetOrder ::
     -> Double
     -> IO ()
 resetOrder botState config "Buy" orderSize price = do
-    unWrapBotWith
-        (cancelLimitOrders "Buy" >>
-         (placeBulkOrder
-              [limitBuy (fromIntegral orderSize) price])
-             orderSize
-             price
-             price)
-        botState
-        config
+    cancel <-
+        async $
+        unWrapBotWith
+            (cancelLimitOrders "Buy")
+            botState
+            config
+    place <-
+        async $
+        unWrapBotWith
+            (placeBulkOrder
+                 [limitBuy (fromIntegral orderSize) price]
+                 orderSize
+                 price
+                 price)
+            botState
+            config
+    mapM_ A.link [cancel, place]
 resetOrder botState config "Sell" orderSize price = do
-    unWrapBotWith
-        (cancelLimitOrders "Sell" >>
-         (placeBulkOrder
-              [limitSell (fromIntegral orderSize) price])
-             orderSize
-             price
-             price)
-        botState
-        config
+    cancel <-
+        async $
+        unWrapBotWith
+            (cancelLimitOrders "Sell")
+            botState
+            config
+    place <-
+        async $
+        unWrapBotWith
+            (placeBulkOrder
+                 [limitBuy (fromIntegral orderSize) price]
+                 orderSize
+                 price
+                 price)
+            botState
+            config
+    mapM_ A.link [cancel, place]
 
 trader ::
        BotState
