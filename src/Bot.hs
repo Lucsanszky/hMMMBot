@@ -52,38 +52,23 @@ import qualified Network.HTTP.Types.Status      as HTTP
 resetOrder ::
        BotState
     -> BitMEXWrapperConfig
-    -> Text
-    -> Integer
+    -> ClientID
     -> Double
     -> IO ()
-resetOrder botState config "Buy" orderSize price = do
-        unWrapBotWith
-            (cancelLimitOrders "Buy" >>
-              (placeBulkOrder
-                   [limitBuy (fromIntegral orderSize) price]
-                   orderSize
-                   price
-                   price))
-            botState
-            config
-resetOrder botState config "Sell" orderSize price = do
-        unWrapBotWith
-            (cancelLimitOrders "Sell" >>
-              (placeBulkOrder
-                   [limitBuy (fromIntegral orderSize) price]
-                   orderSize
-                   price
-                   price))
-            botState
-            config
+resetOrder botState config cid price =
+    unWrapBotWith
+        (amendLimitOrder cid (Just price))
+        botState
+        config
 
 trader ::
        BotState
     -> BitMEXWrapperConfig
     -> (Double, Double)
     -> (IORef Double, IORef Double)
+    -> (IORef ClientID, IORef ClientID)
     -> IO ()
-trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid) = do
+trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid) (sellID, buyID) = do
     prevAsk' <- readIORef prevAsk
     prevBid' <- readIORef prevBid
     sellQty <- atomically $ readTVar openSells
@@ -101,62 +86,64 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
         available <-
             liftIO $ atomically $ readTVar availableBalance
         if (convert XBt_to_XBT (fromIntegral available)) >
-          convert USD_to_XBT newBestAsk *
-          (fromIntegral orderSize) /
-          lev
+           convert USD_to_XBT newBestAsk *
+           (fromIntegral orderSize) /
+           lev
             then do
                 unWrapBotWith
                     (makeMarket
-                        limit
-                        orderSize
-                        newBestAsk
-                        newBestBid)
+                         limit
+                         orderSize
+                         newBestAsk
+                         newBestBid
+                         (sellID, buyID)
+                    )
                     botState
                     config
             else unWrapBotWith
-                    (kill "not enough funds")
-                    botState
-                    config
+                     (kill "not enough funds")
+                     botState
+                     config
         return ()
     when (newBestAsk /= prevAsk' || newBestBid /= prevBid') $ do
         atomicWriteIORef prevAsk newBestAsk
         atomicWriteIORef prevBid newBestBid
+        buyID' <- readIORef buyID
+        sellID' <- readIORef sellID
         let diff = newBestAsk - newBestBid
         when (sellQty == 0 && buyQty /= 0) $ do
             if (diff > 0.5)
-               then do
-                  resetOrder
-                      botState
-                      config
-                      "Buy"
-                      (abs posSize)
-                      (newBestAsk - 0.5)
-                  atomicWriteIORef prevAsk (newBestAsk - 0.5)
-               else
-                  resetOrder
-                      botState
-                      config
-                      "Buy"
-                      (abs posSize)
-                      newBestBid
+                then do
+                    resetOrder
+                        botState
+                        config
+                        buyID'
+                        (newBestAsk - 0.5)
+                    atomicWriteIORef
+                        prevAsk
+                        (newBestAsk - 0.5)
+                else resetOrder
+                         botState
+                         config
+                         buyID'
+                         newBestBid
             return ()
-	when (buyQty == 0 && sellQty /= 0) $ do
+        when (buyQty == 0 && sellQty /= 0) $ do
             if (diff > 0.5)
-               then do
-                  resetOrder
-                      botState
-                      config
-                      "Sell"
-                      posSize
-                      (newBestBid + 0.5)
-                  atomicWriteIORef prevBid (newBestBid + 0.5)
-               else
-                  resetOrder
-                      botState
-                      config
-                      "Sell"
-                      posSize
-                      newBestAsk
+                then do
+                    resetOrder
+                        botState
+                        config
+                        sellID'
+                        (newBestBid + 0.5)
+                    atomicWriteIORef
+                        prevBid
+                        (newBestBid + 0.5)
+                else resetOrder
+                         botState
+                         config
+                         sellID'
+                         newBestAsk
             return ()
 
 tradeLoop :: BitMEXBot ()
@@ -182,9 +169,10 @@ processResponse ::
        BotState
     -> BitMEXWrapperConfig
     -> (IORef Double, IORef Double)
+    -> (IORef ClientID, IORef ClientID)
     -> Maybe Response
     -> IO ()
-processResponse botState@BotState {..} config prevPrices msg = do
+processResponse botState@BotState {..} config prevPrices ids msg = do
     case msg of
         Nothing -> return ()
         Just r ->
@@ -201,6 +189,7 @@ processResponse botState@BotState {..} config prevPrices msg = do
                         config
                         (newBestAsk, newBestBid)
                         prevPrices
+                        ids
                 posResp@(P (TABLE {_data = positionData})) -> do
                     let RespPosition { currentQty = currQty
                                      , openOrderBuyQty = buyQty
@@ -290,6 +279,8 @@ initBot leverage conn = do
     openSellCost <- liftIO $ atomically $ newTVar 0
     prevBid <- liftIO $ newIORef 0.0
     prevAsk <- liftIO $ newIORef 0.0
+    sellID <- liftIO $ newIORef (ClientID Nothing)
+    buyID <- liftIO $ newIORef (ClientID Nothing)
     stopOrderId <-
         liftIO $ atomically $ newTVar (OrderID Nothing)
     let botState =
@@ -330,6 +321,11 @@ initBot leverage conn = do
             async $
             forever $ do
                 msg <- getMessage conn config
-                processResponse botState config (prevAsk, prevBid) msg
+                processResponse
+                    botState
+                    config
+                    (prevAsk, prevBid)
+                    (sellID, buyID)
+                    msg
         A.link processor
     R.runReaderT (runBot tradeLoop) botState

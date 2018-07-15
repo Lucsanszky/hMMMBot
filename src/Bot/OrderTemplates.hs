@@ -5,6 +5,7 @@ module Bot.OrderTemplates
     , limitBuy
     , limitSell
     , orderWithId
+    , orderWithClientId
     , closePosition
     ) where
 
@@ -99,11 +100,11 @@ closePosition side =
         (Just [Close])
         (Nothing)
 
-limitBuy :: Double -> Double -> Mex.Order
-limitBuy orderSize bid =
+limitBuy :: Maybe Text -> Double -> Double -> Mex.Order
+limitBuy id orderSize bid =
     prepareOrder
         (OrderID Nothing)
-        (ClientID Nothing)
+        (ClientID id)
         (LinkID Nothing)
         (Just Limit)
         (Just Buy)
@@ -113,11 +114,11 @@ limitBuy orderSize bid =
         (Just [ParticipateDoNotInitiate])
         Nothing
 
-limitSell :: Double -> Double -> Mex.Order
-limitSell orderSize ask =
+limitSell :: Maybe Text -> Double -> Double -> Mex.Order
+limitSell id orderSize ask =
     prepareOrder
         (OrderID Nothing)
-        (ClientID Nothing)
+        (ClientID id)
         (LinkID Nothing)
         (Just Limit)
         (Just Sell)
@@ -132,6 +133,20 @@ orderWithId oid =
     prepareOrder
         oid
         (ClientID Nothing)
+        (LinkID Nothing)
+        Nothing
+        Nothing
+        (LimitPx Nothing)
+        (StopPx Nothing)
+        (Qty Nothing)
+        Nothing
+        Nothing
+
+orderWithClientId :: ClientID -> Mex.Order
+orderWithClientId oid =
+    prepareOrder
+        (OrderID Nothing)
+        oid
         (LinkID Nothing)
         Nothing
         Nothing

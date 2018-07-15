@@ -2,6 +2,7 @@ module Bot.Util
     ( makeMarket
     , prepareOrder
     , placeBulkOrder
+    , amendLimitOrder
     , cancelLimitOrders
     , getLimit
     , getOrderSize
@@ -57,6 +58,7 @@ import           BitMEXClient
     , Symbol (..)
     , TABLE (..)
     , makeRequest
+    , makeTimestamp
     )
 import           Bot.Concurrent
 import           Bot.Math
@@ -64,6 +66,7 @@ import           Bot.OrderTemplates
 import           Bot.Types
     ( BitMEXBot (..)
     , BotState (..)
+    , ClientID (..)
     , OrderID (..)
     , PositionType (..)
     , Rule (..)
@@ -100,6 +103,9 @@ import qualified Data.ByteString.Lazy           as LBS
     )
 import           Data.IORef
 import qualified Data.Text                      as T (pack)
+import           Data.Time.Clock.POSIX
+    ( getPOSIXTime
+    )
 import qualified Data.Vector                    as V (head)
 import           Lens.Micro
 import           Network.HTTP.Client
@@ -236,6 +242,33 @@ amendOrder order = do
             Mex._setBodyLBS orderTemplate $ encode order
     BitMEXBot . lift $ makeRequest orderRequest
 
+amendLimitOrder :: ClientID -> Maybe Double -> BitMEXBot ()
+amendLimitOrder cid price = do
+    let newStopLoss =
+            (orderWithClientId cid)
+            {Mex.orderPrice = price}
+    Mex.MimeResult {Mex.mimeResultResponse = resp} <-
+        amendOrder newStopLoss
+    let HTTP.Status {statusCode = code} =
+            responseStatus resp
+    if code == 200
+        then return ()
+        else if code == 400
+                 then do
+                     let Just err =
+                             decode $ responseBody resp :: Maybe Mex.Error
+                         errMsg =
+                             err ^. Mex.errorErrorL .
+                             Mex.errorErrorMessageL
+                     if errMsg == Just "Invalid ordStatus"
+                         then return ()
+                         else amendLimitOrder cid price
+                 else kill "amending limit order failed"
+    if code == 200
+        then return ()
+        else do
+            kill "amending limit failed"
+
 bulkAmendOrders ::
        [Mex.Order] -> BitMEXBot (Mex.MimeResult [Mex.Order])
 bulkAmendOrders orders = do
@@ -286,7 +319,7 @@ amendStopOrder oid stopPx = do
     if code == 200
         then return ()
         else do
-            kill "amending failed"
+            kill "amending stop order failed"
 
 cancelStopOrder :: OrderID -> BitMEXBot ()
 cancelStopOrder o@(OrderID (Just oid)) = do
@@ -442,12 +475,14 @@ makeMarket ::
     -> Integer
     -> Double
     -> Double
+    -> (IORef ClientID, IORef ClientID)
     -> BitMEXBot ()
-makeMarket limit orderSize ask bid = do
+makeMarket limit orderSize ask bid (sellID, buyID) = do
     BotState {..} <- R.ask
     size <- liftIO $ readIORef positionSize
     buys' <- liftIO $ atomically $ readTVar openBuys
     sells' <- liftIO $ atomically $ readTVar openSells
+    time <- liftIO $ makeTimestamp <$> getPOSIXTime
     let buys =
             if size > 0
                 then size + buys'
@@ -456,9 +491,13 @@ makeMarket limit orderSize ask bid = do
             if size < 0
                 then (abs size) + sells'
                 else sells'
+        buyID' = Just ("buy" <> (T.pack . show) time)
+        sellID' = Just ("sell" <> (T.pack . show) time)
     when (buys < limit && sells < limit) $ do
         let orders =
-                [ limitSell (fromIntegral orderSize) ask
-                , limitBuy (fromIntegral orderSize) bid
+                [ limitSell sellID' (fromIntegral orderSize) ask
+                , limitBuy buyID' (fromIntegral orderSize) bid
                 ]
+        liftIO $ atomicWriteIORef sellID (ClientID sellID')
+        liftIO $ atomicWriteIORef buyID (ClientID buyID')
         placeBulkOrder orders orderSize ask bid
