@@ -32,6 +32,7 @@ import           Data.Aeson
     , toJSON
     )
 import           Data.ByteString.Char8          (pack)
+import           Data.IORef
 import           Data.Time.Clock.POSIX
     ( getPOSIXTime
     )
@@ -97,41 +98,45 @@ trader ::
        BotState
     -> BitMEXWrapperConfig
     -> (Double, Double)
+    -> (IORef Double, IORef Double)
     -> IO ()
-trader botState@BotState {..} config (newBestAsk, newBestBid) = do
-    when (newBestAsk /= 0 && newBestBid /= 0) $ do
+trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid) = do
+    prevAsk' <- readIORef prevAsk
+    prevBid' <- readIORef prevBid
+    when (newBestAsk /= prevAsk' || newBestBid /= prevBid') $ do
+        posSize <- atomically $ readTVar positionSize
         buyQty <- atomically $ readTVar openBuys
         buyCost <- atomically $ readTVar openBuyCost
         sellQty <- atomically $ readTVar openSells
         sellCost <- atomically $ readTVar openSellCost
-        when (buyQty /= 0 && buyCost /= 0) $ do
-            let buyAvg =
-                    (fromIntegral buyQty) /
-                    convert
-                        XBt_to_XBT
-                        (fromIntegral buyCost)
-            when ((abs buyAvg) < newBestBid - 0.25) $ do
-                resetOrder
-                    botState
-                    config
-                    "Buy"
-                    buyQty
-                    newBestBid
-                return ()
-        when (sellQty /= 0 && sellCost /= 0) $ do
-            let sellAvg =
-                    (fromIntegral sellQty) /
-                    convert
-                        XBt_to_XBT
-                        (fromIntegral sellCost)
-            when ((abs sellAvg) > newBestAsk + 0.25) $ do
-                resetOrder
-                    botState
-                    config
-                    "Sell"
-                    sellQty
-                    newBestAsk
-                return ()
+        -- when (buyQty /= 0 && buyCost /= 0) $ do
+        --     let buyAvg =
+        --             (fromIntegral buyQty) /
+        --             convert
+        --                 XBt_to_XBT
+        --                 (fromIntegral buyCost)
+        when (posSize > 0) $ do
+            resetOrder
+                botState
+                config
+                "Buy"
+                buyQty
+                newBestBid
+            return ()
+        -- when (sellQty /= 0 && sellCost /= 0) $ do
+        --     let sellAvg =
+        --             (fromIntegral sellQty) /
+        --             convert
+        --                 XBt_to_XBT
+        --                 (fromIntegral sellCost)
+        when (posSize < 0) $ do
+            resetOrder
+                botState
+                config
+                "Sell"
+                sellQty
+                newBestAsk
+            return ()
         total <- atomically $ readTVar walletBalance
         let orderSize =
                 getOrderSize newBestAsk $
@@ -182,9 +187,10 @@ tradeLoop = do
 processResponse ::
        BotState
     -> BitMEXWrapperConfig
+    -> (IORef Double, IORef Double)
     -> Maybe Response
     -> IO ()
-processResponse botState@BotState {..} config msg = do
+processResponse botState@BotState {..} config prevPrices msg = do
     case msg of
         Nothing -> return ()
         Just r ->
@@ -200,6 +206,7 @@ processResponse botState@BotState {..} config msg = do
                         botState
                         config
                         (newBestAsk, newBestBid)
+                        prevPrices
                 posResp@(P (TABLE {_data = positionData})) -> do
                     let RespPosition { currentQty = currQty
                                      , openOrderBuyQty = buyQty
@@ -288,6 +295,8 @@ initBot leverage conn = do
     openBuyCost <- liftIO $ atomically $ newTVar 0
     openSells <- liftIO $ atomically $ newTVar 0
     openSellCost <- liftIO $ atomically $ newTVar 0
+    prevBid <- liftIO $ newIORef 0.0
+    prevAsk <- liftIO $ newIORef 0.0
     stopOrderId <-
         liftIO $ atomically $ newTVar (OrderID Nothing)
     let botState =
@@ -328,6 +337,6 @@ initBot leverage conn = do
             async $
             forever $ do
                 msg <- getMessage conn config
-                processResponse botState config msg
+                processResponse botState config (prevAsk, prevBid) msg
         A.link processor
     R.runReaderT (runBot tradeLoop) botState
