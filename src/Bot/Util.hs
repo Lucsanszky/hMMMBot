@@ -44,6 +44,7 @@ import qualified BitMEX                         as Mex
     , orderNew
     , orderNewBulk
     , orderOrdStatusL
+    , orderOrderIdL
     , orderSideL
     , positionUpdateLeverage
     , setQuery
@@ -157,13 +158,32 @@ cancelOrders ids = do
             "}"
     BitMEXBot . lift $ makeRequest orderRequest
 
+updateIDs ::
+       (IORef OrderID, IORef OrderID)
+    -> [(Text, Maybe Text)]
+    -> IO ()
+updateIDs (sellID, buyID) =
+    mapM_
+        (\(id, side) ->
+             case side of
+                 Just "Buy" ->
+                     atomicWriteIORef
+                         buyID
+                         (OrderID (Just id))
+                 Just "Sell" ->
+                     atomicWriteIORef
+                         sellID
+                         (OrderID (Just id))
+                 Nothing -> return ())
+
 placeBulkOrder ::
        [Mex.Order]
     -> Integer
     -> Double
     -> Double
+    -> (IORef OrderID, IORef OrderID)
     -> BitMEXBot ()
-placeBulkOrder orders orderSize ask bid = do
+placeBulkOrder orders orderSize ask bid ids = do
     obs <- R.asks openBuys
     obc <- R.asks openBuyCost
     oss <- R.asks openSells
@@ -195,6 +215,13 @@ placeBulkOrder orders orderSize ask bid = do
                              ( o ^. Mex.orderOrdStatusL
                              , o ^. Mex.orderSideL))
                         orders
+                ids' =
+                    map
+                        (\o ->
+                             ( o ^. Mex.orderOrderIdL
+                             , o ^. Mex.orderSideL))
+                        orders
+            liftIO $ updateIDs ids ids'
             liftIO $ atomically $ do
                 updateVar obs $ buys' +
                     incrementQty
@@ -228,7 +255,7 @@ placeBulkOrder orders orderSize ask bid = do
         else if (code == 503 || code == 502)
                  then do
                      liftIO $ threadDelay 250000
-                     placeBulkOrder orders orderSize ask bid
+                     placeBulkOrder orders orderSize ask bid ids
                  else kill "order didn't go through"
 
 amendOrder ::
@@ -242,11 +269,10 @@ amendOrder order = do
             Mex._setBodyLBS orderTemplate $ encode order
     BitMEXBot . lift $ makeRequest orderRequest
 
-amendLimitOrder :: ClientID -> Maybe Double -> BitMEXBot ()
+amendLimitOrder :: OrderID -> Maybe Double -> BitMEXBot ()
 amendLimitOrder cid price = do
     let newStopLoss =
-            (orderWithClientId cid)
-            {Mex.orderPrice = price}
+            (orderWithId cid) {Mex.orderPrice = price}
     Mex.MimeResult {Mex.mimeResultResponse = resp} <-
         amendOrder newStopLoss
     let HTTP.Status {statusCode = code} =
@@ -475,14 +501,13 @@ makeMarket ::
     -> Integer
     -> Double
     -> Double
-    -> (IORef ClientID, IORef ClientID)
+    -> (IORef OrderID, IORef OrderID)
     -> BitMEXBot ()
 makeMarket limit orderSize ask bid (sellID, buyID) = do
     BotState {..} <- R.ask
     size <- liftIO $ readIORef positionSize
     buys' <- liftIO $ atomically $ readTVar openBuys
     sells' <- liftIO $ atomically $ readTVar openSells
-    time <- liftIO $ makeTimestamp <$> getPOSIXTime
     let buys =
             if size > 0
                 then size + buys'
@@ -491,13 +516,15 @@ makeMarket limit orderSize ask bid (sellID, buyID) = do
             if size < 0
                 then (abs size) + sells'
                 else sells'
-        buyID' = Just ("buy" <> (T.pack . show) time)
-        sellID' = Just ("sell" <> (T.pack . show) time)
     when (buys < limit && sells < limit) $ do
         let orders =
-                [ limitSell sellID' (fromIntegral orderSize) ask
-                , limitBuy buyID' (fromIntegral orderSize) bid
+                [ limitSell
+                      Nothing
+                      (fromIntegral orderSize)
+                      ask
+                , limitBuy
+                      Nothing
+                      (fromIntegral orderSize)
+                      bid
                 ]
-        liftIO $ atomicWriteIORef sellID (ClientID sellID')
-        liftIO $ atomicWriteIORef buyID (ClientID buyID')
-        placeBulkOrder orders orderSize ask bid
+        placeBulkOrder orders orderSize ask bid (sellID, buyID)

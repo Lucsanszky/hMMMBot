@@ -52,12 +52,12 @@ import qualified Network.HTTP.Types.Status      as HTTP
 resetOrder ::
        BotState
     -> BitMEXWrapperConfig
-    -> ClientID
+    -> OrderID
     -> Double
     -> IO ()
-resetOrder botState config cid price =
+resetOrder botState config oid price =
     unWrapBotWith
-        (amendLimitOrder cid (Just price))
+        (amendLimitOrder oid (Just price))
         botState
         config
 
@@ -66,7 +66,7 @@ trader ::
     -> BitMEXWrapperConfig
     -> (Double, Double)
     -> (IORef Double, IORef Double)
-    -> (IORef ClientID, IORef ClientID)
+    -> (IORef OrderID, IORef OrderID)
     -> IO ()
 trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid) (sellID, buyID) = do
     prevAsk' <- readIORef prevAsk
@@ -169,7 +169,7 @@ processResponse ::
        BotState
     -> BitMEXWrapperConfig
     -> (IORef Double, IORef Double)
-    -> (IORef ClientID, IORef ClientID)
+    -> (IORef OrderID, IORef OrderID)
     -> Maybe Response
     -> IO ()
 processResponse botState@BotState {..} config prevPrices ids msg = do
@@ -279,8 +279,8 @@ initBot leverage conn = do
     openSellCost <- liftIO $ atomically $ newTVar 0
     prevBid <- liftIO $ newIORef 0.0
     prevAsk <- liftIO $ newIORef 0.0
-    sellID <- liftIO $ newIORef (ClientID Nothing)
-    buyID <- liftIO $ newIORef (ClientID Nothing)
+    sellID <- liftIO $ newIORef (OrderID Nothing)
+    buyID <- liftIO $ newIORef (OrderID Nothing)
     stopOrderId <-
         liftIO $ atomically $ newTVar (OrderID Nothing)
     let botState =
