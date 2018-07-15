@@ -98,6 +98,7 @@ import           Data.Aeson
 import qualified Data.ByteString.Lazy           as LBS
     ( ByteString
     )
+import           Data.IORef
 import qualified Data.Text                      as T (pack)
 import qualified Data.Vector                    as V (head)
 import           Lens.Micro
@@ -362,9 +363,7 @@ cancelLimitOrders side = do
 
 kill :: String -> BitMEXBot ()
 kill msg = do
-    pSize <-
-        R.asks positionSize >>=
-        (liftIO . atomically . readTVar)
+    pSize <- R.asks positionSize >>= (liftIO . readIORef)
     restart
     let close =
             if pSize < 0
@@ -383,7 +382,7 @@ restart = do
                  (Mex.Accept Mex.MimeJSON))
     liftIO $ do
         atomically $ writeTVar stopOrderId (OrderID Nothing)
-        atomically $ writeTVar positionSize 0
+        atomicWriteIORef positionSize 0
         atomically $ writeTVar prevPosition None
         atomically $ writeTVar openBuys 0
         atomically $ writeTVar openBuyCost 0
@@ -446,7 +445,7 @@ makeMarket ::
     -> BitMEXBot ()
 makeMarket limit orderSize ask bid = do
     BotState {..} <- R.ask
-    size <- liftIO $ atomically $ readTVar positionSize
+    size <- liftIO $ readIORef positionSize
     buys' <- liftIO $ atomically $ readTVar openBuys
     sells' <- liftIO $ atomically $ readTVar openSells
     let buys =
@@ -457,27 +456,9 @@ makeMarket limit orderSize ask bid = do
             if size < 0
                 then (abs size) + sells'
                 else sells'
-    if (buys < limit || sells < limit)
-        then do
-            let orders =
-                    if (buys < limit && sells < limit)
-                        then [ limitSell
-                                   (fromIntegral orderSize)
-                                   ask
-                             , limitBuy
-                                   (fromIntegral orderSize)
-                                   bid
-                             ]
-                        else if (buys < limit)
-                                 then [ limitBuy
-                                            (fromIntegral
-                                                 orderSize)
-                                            bid
-                                      ]
-                                 else [ limitSell
-                                            (fromIntegral
-                                                 orderSize)
-                                            ask
-                                      ]
-            placeBulkOrder orders orderSize ask bid
-        else return ()
+    when (buys < limit && sells < limit) $ do
+        let orders =
+                [ limitSell (fromIntegral orderSize) ask
+                , limitBuy (fromIntegral orderSize) bid
+                ]
+        placeBulkOrder orders orderSize ask bid

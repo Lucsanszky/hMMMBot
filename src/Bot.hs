@@ -49,7 +49,6 @@ import qualified Network.HTTP.Types.Status      as HTTP
     ( Status (..)
     )
 
--- TODO: figure out how to do this inside async,
 resetOrder ::
        BotState
     -> BitMEXWrapperConfig
@@ -106,38 +105,41 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
     when (newBestAsk /= prevAsk' || newBestBid /= prevBid') $ do
         atomicWriteIORef prevAsk newBestAsk
         atomicWriteIORef prevBid newBestBid
-        posSize <- atomically $ readTVar positionSize
-        buyQty <- atomically $ readTVar openBuys
-        buyCost <- atomically $ readTVar openBuyCost
-        sellQty <- atomically $ readTVar openSells
-        sellCost <- atomically $ readTVar openSellCost
-        -- when (buyQty /= 0 && buyCost /= 0) $ do
-        --     let buyAvg =
-        --             (fromIntegral buyQty) /
-        --             convert
-        --                 XBt_to_XBT
-        --                 (fromIntegral buyCost)
+        posSize <- readIORef positionSize
+        let diff = newBestAsk - newBestBid
         when (posSize < 0) $ do
-            resetOrder
-                botState
-                config
-                "Buy"
-                (abs posSize)
-                newBestBid
+            if (diff > 0.5)
+               then
+                  resetOrder
+                      botState
+                      config
+                      "Buy"
+                      (abs posSize)
+                      (newBestAsk - 0.5)
+               else
+                  resetOrder
+                      botState
+                      config
+                      "Buy"
+                      (abs posSize)
+                      newBestBid
             return ()
-        -- when (sellQty /= 0 && sellCost /= 0) $ do
-        --     let sellAvg =
-        --             (fromIntegral sellQty) /
-        --             convert
-        --                 XBt_to_XBT
-        --                 (fromIntegral sellCost)
         when (posSize > 0) $ do
-            resetOrder
-                botState
-                config
-                "Sell"
-                posSize
-                newBestAsk
+            if (diff > 0.5)
+               then
+                  resetOrder
+                      botState
+                      config
+                      "Sell"
+                      posSize
+                      (newBestBid + 0.5)
+               else
+                  resetOrder
+                      botState
+                      config
+                      "Sell"
+                      posSize
+                      newBestAsk
             return ()
         total <- atomically $ readTVar walletBalance
         let orderSize =
@@ -149,23 +151,24 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                 fromIntegral total * lev
         available <-
             liftIO $ atomically $ readTVar availableBalance
-        if (convert XBt_to_XBT (fromIntegral available)) >
-           convert USD_to_XBT newBestAsk *
-           (fromIntegral orderSize) /
-           lev
-            then do
-                unWrapBotWith
-                    (makeMarket
-                         limit
-                         orderSize
-                         newBestAsk
-                         newBestBid)
-                    botState
-                    config
-            else unWrapBotWith
-                     (kill "not enough funds")
-                     botState
-                     config
+        when (posSize == 0) $ do
+            if (convert XBt_to_XBT (fromIntegral available)) >
+              convert USD_to_XBT newBestAsk *
+              (fromIntegral orderSize) /
+              lev
+                then do
+                    unWrapBotWith
+                        (makeMarket
+                            limit
+                            orderSize
+                            newBestAsk
+                            newBestBid)
+                        botState
+                        config
+                else unWrapBotWith
+                        (kill "not enough funds")
+                        botState
+                        config
 
 tradeLoop :: BitMEXBot ()
 tradeLoop = do
@@ -218,8 +221,7 @@ processResponse botState@BotState {..} config prevPrices msg = do
                                      } = head positionData
                     when (currQty /= Nothing) $ do
                         let Just q = map floor currQty
-                        atomically $
-                            updateVar positionSize q
+                        atomicWriteIORef positionSize q
                         atomically $
                             writeTBQueue
                                 (unRiskManagerQueue
@@ -286,7 +288,7 @@ initBot leverage conn = do
     slwQueue <- liftIO $ atomically $ newTBQueue 100
     pnlQueue <- liftIO $ atomically $ newTBQueue 100
     prevPosition <- liftIO $ atomically $ newTVar None
-    positionSize <- liftIO $ atomically $ newTVar 0
+    positionSize <- liftIO $ newIORef 0
     realPnl <- liftIO $ atomically $ newTVar 0
     prevBalance <- liftIO $ atomically $ newTVar $ floor wb
     availableBalance <-

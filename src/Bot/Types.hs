@@ -28,6 +28,7 @@ import           Control.Monad.Reader
     ( MonadReader
     , ReaderT
     )
+import           Data.IORef
 import           Data.Vector                    (Vector)
 import           Network.WebSockets             (Connection)
 
@@ -89,7 +90,7 @@ data BotState = BotState
     , availableBalance :: !(TVar Integer)
     , walletBalance    :: !(TVar Integer)
     , prevPosition     :: !(TVar PositionType)
-    , positionSize     :: !(TVar Integer)
+    , positionSize     :: !(IORef Integer)
     , openBuys         :: !(TVar Integer)
     , openSells        :: !(TVar Integer)
     , openBuyCost      :: !(TVar Integer)
