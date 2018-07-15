@@ -104,6 +104,8 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
     prevAsk' <- readIORef prevAsk
     prevBid' <- readIORef prevBid
     when (newBestAsk /= prevAsk' || newBestBid /= prevBid') $ do
+        atomicWriteIORef prevAsk newBestAsk
+        atomicWriteIORef prevBid newBestBid
         posSize <- atomically $ readTVar positionSize
         buyQty <- atomically $ readTVar openBuys
         buyCost <- atomically $ readTVar openBuyCost
