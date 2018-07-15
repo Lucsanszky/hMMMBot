@@ -308,8 +308,10 @@ initBot leverage conn = do
              , Position
              , Margin
              ] :: [Topic Symbol])
-        async $
+        processor <-
+            async $
             forever $ do
                 msg <- getMessage conn config
                 processResponse botState config msg
+        A.link processor
     R.runReaderT (runBot tradeLoop) botState
