@@ -5,7 +5,6 @@ module Bot.Util
     , cancelLimitOrders
     , getLimit
     , getOrderSize
-    , waitForOpenOrderChange
     , updateLeverage
     , placeOrder
     , amendStopOrder
@@ -152,12 +151,20 @@ cancelOrders ids = do
     BitMEXBot . lift $ makeRequest orderRequest
 
 placeBulkOrder ::
-       [Mex.Order] -> BitMEXBot ()
-placeBulkOrder orders = do
+       [Mex.Order]
+    -> Integer
+    -> Double
+    -> Double
+    -> BitMEXBot ()
+placeBulkOrder orders orderSize ask bid = do
     obs <- R.asks openBuys
+    obc <- R.asks openBuyCost
     oss <- R.asks openSells
+    osc <- R.asks openSellCost
     buys' <- liftIO $ atomically $ readTVar obs
     sells' <- liftIO $ atomically $ readTVar oss
+    openBC <- liftIO $ atomically $ readTVar obc
+    openSC <- liftIO $ atomically $ readTVar osc
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderNewBulk
                 (Mex.ContentType Mex.MimeJSON)
@@ -167,28 +174,55 @@ placeBulkOrder orders = do
             encode orders <>
             "}"
     Mex.MimeResult { Mex.mimeResultResponse = resp
-                    , Mex.mimeResult = res
-                    } <- BitMEXBot . lift $ makeRequest orderRequest
+                   , Mex.mimeResult = res
+                   } <-
+        BitMEXBot . lift $ makeRequest orderRequest
     let HTTP.Status {statusCode = code} =
             responseStatus resp
     if code == 200
         then do
             let Right orders = res
-                stats =
+                pairs =
                     map
-                        ((^. Mex.orderOrdStatusL))
+                        (\o ->
+                             ( o ^. Mex.orderOrdStatusL
+                             , o ^. Mex.orderSideL))
                         orders
-            unless (all (== Just "Canceled") stats) $
-                liftIO $
-                atomically $
-                waitForOpenOrderChange
-                    (buys', sells')
-                    (obs, oss)
+            liftIO $ atomically $ do
+                updateVar obs $ buys' +
+                    incrementQty
+                        orderSize
+                        (Just "Buy")
+                        pairs
+            liftIO $ atomically $ do
+                updateVar obc $ openBC -
+                    (incrementQty
+                         (floor $
+                          convert
+                              XBT_to_XBt
+                              (fromIntegral orderSize / bid)))
+                        (Just "Buy")
+                        pairs
+            liftIO $ atomically $ do
+                updateVar oss $ sells' +
+                    incrementQty
+                        orderSize
+                        (Just "Sell")
+                        pairs
+            liftIO $ atomically $ do
+                updateVar osc $ openSC -
+                    (incrementQty
+                         (floor $
+                          convert
+                              XBT_to_XBt
+                              (fromIntegral orderSize / ask)))
+                        (Just "Sell")
+                        pairs
         else if (code == 503 || code == 502)
-                  then do
-                      liftIO $ threadDelay 250000
-                      placeBulkOrder orders
-                  else kill "order didn't go through"
+                 then do
+                     liftIO $ threadDelay 250000
+                     placeBulkOrder orders orderSize ask bid
+                 else kill "order didn't go through"
 
 amendOrder ::
        Mex.Order -> BitMEXBot (Mex.MimeResult Mex.Order)
@@ -299,7 +333,21 @@ cancelLimitOrders side = do
     let HTTP.Status {statusCode = code} =
             responseStatus resp
     if code == 200
-        then return ()
+        then if side == "Buy"
+                 then do
+                     openBuys <- R.asks openBuys
+                     openBuyCost <- R.asks openBuyCost
+                     liftIO $ atomically $
+                         updateVar openBuys 0
+                     liftIO $ atomically $
+                         updateVar openBuyCost 0
+                 else do
+                     openSells <- R.asks openSells
+                     openSellCost <- R.asks openSellCost
+                     liftIO $ atomically $
+                         updateVar openSells 0
+                     liftIO $ atomically $
+                         updateVar openSellCost 0
         else if code == 400
                  then do
                      let Just err =
@@ -378,16 +426,17 @@ getOrderSize price balance =
     floor $ (convert XBT_to_USD price) *
     (convert XBt_to_XBT $ balance * 0.21)
 
-waitForOpenOrderChange ::
-       (Integer, Integer)
-    -> (TVar Integer, TVar Integer)
-    -> STM ()
-waitForOpenOrderChange (buyQty, sellQty) (openBuys, openSells) = do
-    buyQty' <- readTVar openBuys
-    sellQty' <- readTVar openSells
-    if (buyQty' /= buyQty || sellQty' /= sellQty)
-        then return ()
-        else retry
+incrementQty ::
+       Integer
+    -> Maybe Text
+    -> [(Maybe Text, Maybe Text)]
+    -> Integer
+incrementQty orderSize side =
+    sum .
+    map (\(stat, side') ->
+             if (stat == Just "New" && side == side')
+                 then orderSize
+                 else 0)
 
 makeMarket ::
        Integer
@@ -430,5 +479,5 @@ makeMarket limit orderSize ask bid = do
                                                  orderSize)
                                             ask
                                       ]
-            placeBulkOrder orders
+            placeBulkOrder orders orderSize ask bid
         else return ()

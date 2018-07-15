@@ -35,7 +35,6 @@ import           Control.Monad.STM
     )
 import           Data.Vector                    (head, (!?))
 
-
 readResponse :: TBQueue (Maybe Response) -> STM Response
 readResponse q = do
     r <- readTBQueue q
@@ -49,14 +48,3 @@ updateVar var newVal = do
     if currVal == newVal
         then return ()
         else writeTVar var newVal
-
--- waitForPriceChange ::
---        (Double, Double)
---     -> (TVar Double, TVar Double)
---     -> STM ()
--- waitForPriceChange (bid, ask) (bestBid, bestAsk) = do
---     newBid <- readTVar bestBid
---     newAsk <- readTVar bestAsk
---     if (bid /= newBid || ask /= newAsk)
---         then return ()
---         else retry

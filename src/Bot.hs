@@ -59,15 +59,21 @@ resetOrder ::
 resetOrder botState config "Buy" orderSize price = do
     unWrapBotWith
         (cancelLimitOrders "Buy" >>
-         placeBulkOrder
-             [limitBuy (fromIntegral orderSize) price])
+         (placeBulkOrder
+              [limitBuy (fromIntegral orderSize) price])
+             orderSize
+             price
+             price)
         botState
         config
 resetOrder botState config "Sell" orderSize price = do
     unWrapBotWith
         (cancelLimitOrders "Sell" >>
-         placeBulkOrder
-             [limitSell (fromIntegral orderSize) price])
+         (placeBulkOrder
+              [limitSell (fromIntegral orderSize) price])
+             orderSize
+             price
+             price)
         botState
         config
 
