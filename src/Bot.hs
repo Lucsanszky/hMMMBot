@@ -122,7 +122,7 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                 botState
                 config
                 "Buy"
-                buyQty
+                (abs posSize)
                 newBestBid
             return ()
         -- when (sellQty /= 0 && sellCost /= 0) $ do
@@ -136,7 +136,7 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                 botState
                 config
                 "Sell"
-                sellQty
+                posSize
                 newBestAsk
             return ()
         total <- atomically $ readTVar walletBalance
