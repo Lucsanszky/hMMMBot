@@ -94,8 +94,8 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
             then do
                 -- Quickly write quantities here
                 -- to prevent double order posting
-                atomicWriteIORef buyQty orderSize
-                atomicWriteIORef sellQty orderSize
+                atomicWriteIORef openBuys orderSize
+                atomicWriteIORef openSells orderSize
                 unWrapBotWith
                     (makeMarket
                          limit
@@ -227,14 +227,12 @@ processResponse botState@BotState {..} config prevPrices ids@(sellID, buyID) msg
                                 (Just posResp)
                     when (buyQty /= Nothing) $ do
                         let Just b = buyQty
-                        atomically $ updateVar openBuys b
                         atomicWriteIORef openBuys b
                     when (buyCost /= Nothing) $ do
                         let Just bc = buyCost
                         atomicWriteIORef openBuyCost bc
                     when (sellQty /= Nothing) $ do
                         let Just s = sellQty
-                        atomically $ updateVar openSells s
                         atomicWriteIORef openSells s
                     when (sellCost /= Nothing) $ do
                         let Just sc = sellCost
