@@ -222,40 +222,35 @@ placeBulkOrder orders orderSize ask bid ids = do
                              , o ^. Mex.orderSideL))
                         orders
             liftIO $ updateIDs ids ids'
-            liftIO $
-                atomicWriteIORef obs $ buys' +
-                    incrementQty
-                        orderSize
-                        (Just "Buy")
-                        pairs
-            liftIO $
-                atomicWriteIORef obc $ openBC -
-                    (incrementQty
-                         (floor $
-                          convert
-                              XBT_to_XBt
-                              (fromIntegral orderSize / bid)))
-                        (Just "Buy")
-                        pairs
-            liftIO $
-                atomicWriteIORef oss $ sells' +
-                    incrementQty
-                        orderSize
-                        (Just "Sell")
-                        pairs
-            liftIO $
-                atomicWriteIORef osc $ openSC -
-                    (incrementQty
-                         (floor $
-                          convert
-                              XBT_to_XBt
-                              (fromIntegral orderSize / ask)))
-                        (Just "Sell")
-                        pairs
+            liftIO $ atomicWriteIORef obs $ buys' +
+                incrementQty orderSize (Just "Buy") pairs
+            liftIO $ atomicWriteIORef obc $ openBC -
+                (incrementQty
+                     (floor $
+                      convert
+                          XBT_to_XBt
+                          (fromIntegral orderSize / bid)))
+                    (Just "Buy")
+                    pairs
+            liftIO $ atomicWriteIORef oss $ sells' +
+                incrementQty orderSize (Just "Sell") pairs
+            liftIO $ atomicWriteIORef osc $ openSC -
+                (incrementQty
+                     (floor $
+                      convert
+                          XBT_to_XBt
+                          (fromIntegral orderSize / ask)))
+                    (Just "Sell")
+                    pairs
         else if (code == 503 || code == 502)
                  then do
                      liftIO $ threadDelay 250000
-                     placeBulkOrder orders orderSize ask bid ids
+                     placeBulkOrder
+                         orders
+                         orderSize
+                         ask
+                         bid
+                         ids
                  else kill "order didn't go through"
 
 amendOrder ::
@@ -517,15 +512,36 @@ makeMarket limit orderSize ask bid (sellID, buyID) = do
             if size < 0
                 then (abs size) + sells'
                 else sells'
-    when (buys < limit && sells < limit) $ do
-        let orders =
-                [ limitSell
-                      Nothing
-                      (fromIntegral orderSize)
-                      ask
-                , limitBuy
-                      Nothing
-                      (fromIntegral orderSize)
-                      bid
-                ]
-        placeBulkOrder orders orderSize ask bid (sellID, buyID)
+    if (buys < limit || sells < limit)
+        then do
+            let orders =
+                    if (buys < limit && sells < limit)
+                        then [ limitSell
+                                   Nothing
+                                   (fromIntegral orderSize)
+                                   ask
+                             , limitBuy
+                                   Nothing
+                                   (fromIntegral orderSize)
+                                   bid
+                             ]
+                        else if (buys < limit)
+                                 then [ limitBuy
+                                            Nothing
+                                            (fromIntegral
+                                                 orderSize)
+                                            bid
+                                      ]
+                                 else [ limitSell
+                                            Nothing
+                                            (fromIntegral
+                                                 orderSize)
+                                            ask
+                                      ]
+            placeBulkOrder
+                orders
+                orderSize
+                ask
+                bid
+                (sellID, buyID)
+        else return ()

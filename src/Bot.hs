@@ -133,7 +133,7 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                     atomicWriteIORef prevBid newBestBid
                     atomicWriteIORef prevAsk newBestAsk
             return ()
-        when (posSize == 0 && buyQty == 0 && sellQty == 0) $ do
+        when (posSize == 0 && (buyQty == 0 || sellQty == 0)) $ do
             atomicWriteIORef prevAsk newBestAsk
             atomicWriteIORef prevBid newBestBid
             total <- atomically $ readTVar walletBalance
