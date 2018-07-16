@@ -188,10 +188,10 @@ placeBulkOrder orders orderSize ask bid ids = do
     obc <- R.asks openBuyCost
     oss <- R.asks openSells
     osc <- R.asks openSellCost
-    buys' <- liftIO $ atomically $ readTVar obs
-    sells' <- liftIO $ atomically $ readTVar oss
-    openBC <- liftIO $ atomically $ readTVar obc
-    openSC <- liftIO $ atomically $ readTVar osc
+    buys' <- liftIO $ readIORef obs
+    sells' <- liftIO $ readIORef oss
+    openBC <- liftIO $ readIORef obc
+    openSC <- liftIO $ readIORef osc
     let orderTemplate@(Mex.BitMEXRequest {..}) =
             Mex.orderNewBulk
                 (Mex.ContentType Mex.MimeJSON)
@@ -222,14 +222,14 @@ placeBulkOrder orders orderSize ask bid ids = do
                              , o ^. Mex.orderSideL))
                         orders
             liftIO $ updateIDs ids ids'
-            liftIO $ atomically $ do
-                updateVar obs $ buys' +
+            liftIO $
+                atomicWriteIORef obs $ buys' +
                     incrementQty
                         orderSize
                         (Just "Buy")
                         pairs
-            liftIO $ atomically $ do
-                updateVar obc $ openBC -
+            liftIO $
+                atomicWriteIORef obc $ openBC -
                     (incrementQty
                          (floor $
                           convert
@@ -237,14 +237,14 @@ placeBulkOrder orders orderSize ask bid ids = do
                               (fromIntegral orderSize / bid)))
                         (Just "Buy")
                         pairs
-            liftIO $ atomically $ do
-                updateVar oss $ sells' +
+            liftIO $
+                atomicWriteIORef oss $ sells' +
                     incrementQty
                         orderSize
                         (Just "Sell")
                         pairs
-            liftIO $ atomically $ do
-                updateVar osc $ openSC -
+            liftIO $
+                atomicWriteIORef osc $ openSC -
                     (incrementQty
                          (floor $
                           convert
@@ -390,17 +390,17 @@ cancelLimitOrders side = do
                  then do
                      openBuys <- R.asks openBuys
                      openBuyCost <- R.asks openBuyCost
-                     liftIO $ atomically $
-                         updateVar openBuys 0
-                     liftIO $ atomically $
-                         updateVar openBuyCost 0
+                     liftIO $
+                         atomicWriteIORef openBuys 0
+                     liftIO $
+                         atomicWriteIORef openBuyCost 0
                  else do
                      openSells <- R.asks openSells
                      openSellCost <- R.asks openSellCost
-                     liftIO $ atomically $
-                         updateVar openSells 0
-                     liftIO $ atomically $
-                         updateVar openSellCost 0
+                     liftIO $
+                         atomicWriteIORef openSells 0
+                     liftIO $
+                         atomicWriteIORef openSellCost 0
         else if code == 400
                  then do
                      let Just err =
@@ -436,10 +436,10 @@ restart = do
         atomically $ writeTVar stopOrderId (OrderID Nothing)
         atomicWriteIORef positionSize 0
         atomically $ writeTVar prevPosition None
-        atomically $ writeTVar openBuys 0
-        atomically $ writeTVar openBuyCost 0
-        atomically $ writeTVar openSells 0
-        atomically $ writeTVar openSellCost 0
+        atomicWriteIORef openBuys 0
+        atomicWriteIORef openBuyCost 0
+        atomicWriteIORef openSells 0
+        atomicWriteIORef openSellCost 0
 
 -------------------------------------------------------------
 -- POSITION
@@ -499,8 +499,8 @@ makeMarket ::
 makeMarket limit orderSize ask bid (sellID, buyID) = do
     BotState {..} <- R.ask
     size <- liftIO $ readIORef positionSize
-    buys' <- liftIO $ atomically $ readTVar openBuys
-    sells' <- liftIO $ atomically $ readTVar openSells
+    buys' <- liftIO $ readIORef openBuys
+    sells' <- liftIO $ readIORef openSells
     let buys =
             if size > 0
                 then size + buys'
