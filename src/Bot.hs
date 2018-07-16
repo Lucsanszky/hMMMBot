@@ -74,52 +74,16 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
     sellQty <- readIORef openSells
     buyQty <- readIORef openBuys
     posSize <- readIORef positionSize
-    when (posSize == 0 && buyQty == 0 && sellQty == 0) $ do
-        atomicWriteIORef prevAsk newBestAsk
-        atomicWriteIORef prevBid newBestBid
-        total <- atomically $ readTVar walletBalance
-        let orderSize =
-                getOrderSize newBestAsk $
-                fromIntegral total * lev
-            lev = Mex.unLeverage leverage
-            limit =
-                getLimit newBestAsk $
-                fromIntegral total * lev
-        available <-
-            liftIO $ atomically $ readTVar availableBalance
-        if (convert XBt_to_XBT (fromIntegral available)) >
-           convert USD_to_XBT newBestAsk *
-           (fromIntegral orderSize) /
-           lev
-            then do
-                -- Quickly write quantities here
-                -- to prevent double order posting
-                atomicWriteIORef openBuys orderSize
-                atomicWriteIORef openSells orderSize
-                unWrapBotWith
-                    (makeMarket
-                         limit
-                         orderSize
-                         newBestAsk
-                         newBestBid
-                         (sellID, buyID))
-                    botState
-                    config
-            else unWrapBotWith
-                     (kill "not enough funds")
-                     botState
-                     config
-        return ()
     when (newBestAsk /= prevAsk' || newBestBid /= prevBid') $ do
         buyID' <- readIORef buyID
         sellID' <- readIORef sellID
         let diff = newBestAsk - newBestBid
         when (sellQty == 0 && buyQty /= 0) $ do
             if (diff > 0.5)
-                then do
                     -- Don't amend if the bot has already done so.
                     -- I.e.: previous value was updated locally,
                     -- thus it differs from the exchange's value
+                then do
                     when (prevBid' == newBestBid) $ do
                         resetOrder
                             botState
@@ -132,19 +96,19 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                         atomicWriteIORef prevAsk newBestAsk
                 else do
                     resetOrder
-                         botState
-                         config
-                         buyID'
-                         newBestBid
+                        botState
+                        config
+                        buyID'
+                        newBestBid
                     atomicWriteIORef prevAsk newBestAsk
                     atomicWriteIORef prevBid newBestBid
             return ()
         when (buyQty == 0 && sellQty /= 0) $ do
             if (diff > 0.5)
-                then do
                     -- Don't amend if the bot has already done so.
                     -- I.e.: previous value was updated locally,
                     -- thus it differs from the exchange's value
+                then do
                     when (prevAsk' == newBestAsk) $ do
                         resetOrder
                             botState
@@ -157,13 +121,45 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                         atomicWriteIORef prevBid newBestBid
                 else do
                     resetOrder
-                         botState
-                         config
-                         sellID'
-                         newBestAsk
+                        botState
+                        config
+                        sellID'
+                        newBestAsk
                     atomicWriteIORef prevBid newBestBid
                     atomicWriteIORef prevAsk newBestAsk
-
+            return ()
+        when (posSize == 0 && buyQty == 0 && sellQty == 0) $ do
+            atomicWriteIORef prevAsk newBestAsk
+            atomicWriteIORef prevBid newBestBid
+            total <- atomically $ readTVar walletBalance
+            let orderSize =
+                    getOrderSize newBestAsk $
+                    fromIntegral total * lev
+                lev = Mex.unLeverage leverage
+                limit =
+                    getLimit newBestAsk $
+                    fromIntegral total * lev
+            available <-
+                liftIO $
+                atomically $ readTVar availableBalance
+            if (convert XBt_to_XBT (fromIntegral available)) >
+               convert USD_to_XBT newBestAsk *
+               (fromIntegral orderSize) /
+               lev
+                then do
+                    unWrapBotWith
+                        (makeMarket
+                             limit
+                             orderSize
+                             newBestAsk
+                             newBestBid
+                             (sellID, buyID))
+                        botState
+                        config
+                else unWrapBotWith
+                         (kill "not enough funds")
+                         botState
+                         config
             return ()
 
 tradeLoop :: BitMEXBot ()
