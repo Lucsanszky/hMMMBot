@@ -300,8 +300,7 @@ amendLimitOrder cid@(OrderID (Just _)) idRef price = do
                            liftIO $ threadDelay 250000
                            return ()
                          else kill "amending limit order failed"
-amendLimitOrder (OrderID Nothing) _ _ =
-    kill "amending limit order failed: empty order id"
+amendLimitOrder (OrderID Nothing) _ _ = return ()
 
 bulkAmendOrders ::
        [Mex.Order] -> BitMEXBot (Mex.MimeResult [Mex.Order])
