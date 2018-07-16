@@ -113,15 +113,19 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
         when (sellQty == 0 && buyQty /= 0) $ do
             if (diff > 0.5)
                 then do
-                    resetOrder
-                        botState
-                        config
-                        buyID'
-                        (newBestAsk - 0.5)
-                    atomicWriteIORef
-                        prevBid
-                        (newBestAsk - 0.5)
-                    atomicWriteIORef prevAsk newBestAsk
+                    -- Don't amend if the bot has already done so.
+                    -- I.e.: previous value was updated locally,
+                    -- thus it differs from the exchange's value
+                    when (prevBid' == newBestBid) $ do
+                        resetOrder
+                            botState
+                            config
+                            buyID'
+                            (newBestAsk - 0.5)
+                        atomicWriteIORef
+                            prevBid
+                            (newBestAsk - 0.5)
+                        atomicWriteIORef prevAsk newBestAsk
                 else do
                     resetOrder
                          botState
@@ -134,15 +138,19 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
         when (buyQty == 0 && sellQty /= 0) $ do
             if (diff > 0.5)
                 then do
-                    resetOrder
-                        botState
-                        config
-                        sellID'
-                        (newBestBid + 0.5)
-                    atomicWriteIORef
-                        prevAsk
-                        (newBestBid + 0.5)
-                    atomicWriteIORef prevBid newBestBid
+                    -- Don't amend if the bot has already done so.
+                    -- I.e.: previous value was updated locally,
+                    -- thus it differs from the exchange's value
+                    when (prevAsk' == newBestAsk) $ do
+                        resetOrder
+                            botState
+                            config
+                            sellID'
+                            (newBestBid + 0.5)
+                        atomicWriteIORef
+                            prevAsk
+                            (newBestBid + 0.5)
+                        atomicWriteIORef prevBid newBestBid
                 else do
                     resetOrder
                          botState
