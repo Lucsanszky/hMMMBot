@@ -290,10 +290,6 @@ amendLimitOrder cid price = do
                          then return ()
                          else amendLimitOrder cid price
                  else kill "amending limit order failed"
-    if code == 200
-        then return ()
-        else do
-            kill "amending limit failed"
 
 bulkAmendOrders ::
        [Mex.Order] -> BitMEXBot (Mex.MimeResult [Mex.Order])
@@ -342,10 +338,6 @@ amendStopOrder oid stopPx = do
                          then return ()
                          else amendStopOrder oid stopPx
                  else kill "amending stop order failed"
-    if code == 200
-        then return ()
-        else do
-            kill "amending stop order failed"
 
 cancelStopOrder :: OrderID -> BitMEXBot ()
 cancelStopOrder o@(OrderID (Just oid)) = do
