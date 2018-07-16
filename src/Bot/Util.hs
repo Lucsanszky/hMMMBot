@@ -202,6 +202,7 @@ placeBulkOrder orders orderSize ask bid ids = do
             "}"
     Mex.MimeResult { Mex.mimeResultResponse = resp
                    , Mex.mimeResult = res
+
                    } <-
         BitMEXBot . lift $ makeRequest orderRequest
     let HTTP.Status {statusCode = code} =
@@ -294,7 +295,11 @@ amendLimitOrder cid@(OrderID (Just _)) idRef price = do
                              return ()
                          else kill
                                   "amending limit order failed"
-                 else kill "amending limit order failed"
+                 else if (code == 503 || code == 502)
+                         then do
+                           liftIO $ threadDelay 250000
+                           return ()
+                         else kill "amending limit order failed"
 amendLimitOrder (OrderID Nothing) _ _ =
     kill "amending limit order failed: empty order id"
 
@@ -344,7 +349,11 @@ amendStopOrder oid stopPx = do
                      if errMsg == Just "Invalid ordStatus"
                          then return ()
                          else amendStopOrder oid stopPx
-                 else kill "amending stop order failed"
+                 else if (code == 503 || code == 502)
+                         then do
+                           liftIO $ threadDelay 500000
+                           amendStopOrder oid stopPx
+                         else kill "amending stop order failed"
 
 cancelStopOrder :: OrderID -> BitMEXBot ()
 cancelStopOrder o@(OrderID (Just oid)) = do
