@@ -71,8 +71,8 @@ trader ::
 trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid) (sellID, buyID) = do
     prevAsk' <- readIORef prevAsk
     prevBid' <- readIORef prevBid
-    sellQty <- atomically $ readTVar openSells
-    buyQty <- atomically $ readTVar openBuys
+    sellQty <- readIORef openSells
+    buyQty <- readIORef openBuys
     posSize <- readIORef positionSize
     when (posSize == 0 && buyQty == 0 && sellQty == 0) $ do
         atomicWriteIORef prevAsk newBestAsk
@@ -227,22 +227,20 @@ processResponse botState@BotState {..} config prevPrices ids@(sellID, buyID) msg
                             atomicWriteIORef
                                 buyID
                                 (OrderID Nothing)
-                        atomically $ updateVar openBuys b
+                        atomicWriteIORef openBuys b
                     when (buyCost /= Nothing) $ do
                         let Just bc = buyCost
-                        atomically $
-                            updateVar openBuyCost bc
+                        atomicWriteIORef openBuyCost bc
                     when (sellQty /= Nothing) $ do
                         let Just s = sellQty
                         when (s == 0) $
                             atomicWriteIORef
                                 sellID
                                 (OrderID Nothing)
-                        atomically $ updateVar openSells s
+                        atomicWriteIORef openSells s
                     when (sellCost /= Nothing) $ do
                         let Just sc = sellCost
-                        atomically $
-                            updateVar openSellCost sc
+                        atomicWriteIORef openSellCost sc
                 marginResp@(M (TABLE {_data = marginData})) -> do
                     let RespMargin { realisedPnl = rpnl
                                    , availableMargin = ab
@@ -297,10 +295,10 @@ initBot leverage conn = do
         liftIO $ atomically $ newTVar $ floor ab
     walletBalance <-
         liftIO $ atomically $ newTVar $ floor wb
-    openBuys <- liftIO $ atomically $ newTVar 0
-    openBuyCost <- liftIO $ atomically $ newTVar 0
-    openSells <- liftIO $ atomically $ newTVar 0
-    openSellCost <- liftIO $ atomically $ newTVar 0
+    openBuys <- liftIO $ newIORef 0
+    openBuyCost <- liftIO $ newIORef 0
+    openSells <- liftIO $ newIORef 0
+    openSellCost <- liftIO $ newIORef 0
     prevBid <- liftIO $ newIORef 0.0
     prevAsk <- liftIO $ newIORef 0.0
     sellID <- liftIO $ newIORef (OrderID Nothing)
