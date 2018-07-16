@@ -288,7 +288,7 @@ amendLimitOrder cid price = do
                              Mex.errorErrorMessageL
                      if errMsg == Just "Invalid ordStatus"
                          then return ()
-                         else amendLimitOrder cid price
+                         else kill "amending limit order failed"
                  else kill "amending limit order failed"
 
 bulkAmendOrders ::
