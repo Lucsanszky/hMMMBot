@@ -223,10 +223,6 @@ processResponse botState@BotState {..} config prevPrices ids@(sellID, buyID) msg
                                 (Just posResp)
                     when (buyQty /= Nothing) $ do
                         let Just b = buyQty
-                        when (b == 0) $
-                            atomicWriteIORef
-                                buyID
-                                (OrderID Nothing)
                         atomically $ updateVar openBuys b
                     when (buyCost /= Nothing) $ do
                         let Just bc = buyCost
@@ -234,10 +230,6 @@ processResponse botState@BotState {..} config prevPrices ids@(sellID, buyID) msg
                             updateVar openBuyCost bc
                     when (sellQty /= Nothing) $ do
                         let Just s = sellQty
-                        when (s == 0) $
-                            atomicWriteIORef
-                                sellID
-                                (OrderID Nothing)
                         atomically $ updateVar openSells s
                     when (sellCost /= Nothing) $ do
                         let Just sc = sellCost

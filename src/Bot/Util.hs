@@ -287,6 +287,7 @@ amendLimitOrder cid price = do
                              err ^. Mex.errorErrorL .
                              Mex.errorErrorMessageL
                      if errMsg == Just "Invalid ordStatus"
+                         -- TODO: Consider resetting the OrderID here
                          then return ()
                          else kill "amending limit order failed"
                  else kill "amending limit order failed"
