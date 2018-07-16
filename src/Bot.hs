@@ -53,11 +53,12 @@ resetOrder ::
        BotState
     -> BitMEXWrapperConfig
     -> OrderID
+    -> IORef OrderID
     -> Double
     -> IO ()
-resetOrder botState config oid price =
+resetOrder botState config oid idRef price =
     unWrapBotWith
-        (amendLimitOrder oid (Just price))
+        (amendLimitOrder oid idRef (Just price))
         botState
         config
 
@@ -89,6 +90,7 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                             botState
                             config
                             buyID'
+                            buyID
                             (newBestAsk - 0.5)
                         atomicWriteIORef
                             prevBid
@@ -99,6 +101,7 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                         botState
                         config
                         buyID'
+                        buyID
                         newBestBid
                     atomicWriteIORef prevAsk newBestAsk
                     atomicWriteIORef prevBid newBestBid
@@ -114,6 +117,7 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                             botState
                             config
                             sellID'
+                            sellID
                             (newBestBid + 0.5)
                         atomicWriteIORef
                             prevAsk
@@ -124,6 +128,7 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                         botState
                         config
                         sellID'
+                        sellID
                         newBestAsk
                     atomicWriteIORef prevBid newBestBid
                     atomicWriteIORef prevAsk newBestAsk

@@ -269,8 +269,12 @@ amendOrder order = do
             Mex._setBodyLBS orderTemplate $ encode order
     BitMEXBot . lift $ makeRequest orderRequest
 
-amendLimitOrder :: OrderID -> Maybe Double -> BitMEXBot ()
-amendLimitOrder cid price = do
+amendLimitOrder ::
+       OrderID
+    -> IORef OrderID
+    -> Maybe Double
+    -> BitMEXBot ()
+amendLimitOrder cid@(OrderID (Just _)) idRef price = do
     let newStopLoss =
             (orderWithId cid) {Mex.orderPrice = price}
     Mex.MimeResult {Mex.mimeResultResponse = resp} <-
@@ -287,10 +291,17 @@ amendLimitOrder cid price = do
                              err ^. Mex.errorErrorL .
                              Mex.errorErrorMessageL
                      if errMsg == Just "Invalid ordStatus"
-                         -- TODO: Consider resetting the OrderID here
-                         then return ()
-                         else kill "amending limit order failed"
+                         then do
+                             liftIO $
+                                 atomicWriteIORef
+                                     idRef
+                                     (OrderID Nothing)
+                             return ()
+                         else kill
+                                  "amending limit order failed"
                  else kill "amending limit order failed"
+amendLimitOrder (OrderID Nothing) _ _ =
+    kill "amending limit order failed: empty order id"
 
 bulkAmendOrders ::
        [Mex.Order] -> BitMEXBot (Mex.MimeResult [Mex.Order])
@@ -390,15 +401,12 @@ cancelLimitOrders side = do
                  then do
                      openBuys <- R.asks openBuys
                      openBuyCost <- R.asks openBuyCost
-                     liftIO $
-                         atomicWriteIORef openBuys 0
-                     liftIO $
-                         atomicWriteIORef openBuyCost 0
+                     liftIO $ atomicWriteIORef openBuys 0
+                     liftIO $ atomicWriteIORef openBuyCost 0
                  else do
                      openSells <- R.asks openSells
                      openSellCost <- R.asks openSellCost
-                     liftIO $
-                         atomicWriteIORef openSells 0
+                     liftIO $ atomicWriteIORef openSells 0
                      liftIO $
                          atomicWriteIORef openSellCost 0
         else if code == 400
