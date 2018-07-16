@@ -64,7 +64,7 @@ executable hMMMBot
   -- other-extensions:
 
   ghc-options: -Wall
-               -O1
+               -O2
                -threaded
                -rtsopts
                -with-rtsopts=-N
