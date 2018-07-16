@@ -96,8 +96,7 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                          orderSize
                          newBestAsk
                          newBestBid
-                         (sellID, buyID)
-                    )
+                         (sellID, buyID))
                     botState
                     config
             else unWrapBotWith
@@ -172,7 +171,7 @@ processResponse ::
     -> (IORef OrderID, IORef OrderID)
     -> Maybe Response
     -> IO ()
-processResponse botState@BotState {..} config prevPrices ids msg = do
+processResponse botState@BotState {..} config prevPrices ids@(sellID, buyID) msg = do
     case msg of
         Nothing -> return ()
         Just r ->
@@ -207,6 +206,10 @@ processResponse botState@BotState {..} config prevPrices ids msg = do
                                 (Just posResp)
                     when (buyQty /= Nothing) $ do
                         let Just b = buyQty
+                        when (b == 0) $
+                            atomicWriteIORef
+                                buyID
+                                (OrderID Nothing)
                         atomically $ updateVar openBuys b
                     when (buyCost /= Nothing) $ do
                         let Just bc = buyCost
@@ -214,6 +217,10 @@ processResponse botState@BotState {..} config prevPrices ids msg = do
                             updateVar openBuyCost bc
                     when (sellQty /= Nothing) $ do
                         let Just s = sellQty
+                        when (s == 0) $
+                            atomicWriteIORef
+                                sellID
+                                (OrderID Nothing)
                         atomically $ updateVar openSells s
                     when (sellCost /= Nothing) $ do
                         let Just sc = sellCost
