@@ -92,6 +92,10 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
            (fromIntegral orderSize) /
            lev
             then do
+                -- Quickly write quantities here
+                -- to prevent double order posting
+                atomicWriteIORef buyQty orderSize
+                atomicWriteIORef sellQty orderSize
                 unWrapBotWith
                     (makeMarket
                          limit
