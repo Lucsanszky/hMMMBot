@@ -75,6 +75,8 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
     buyQty <- atomically $ readTVar openBuys
     posSize <- readIORef positionSize
     when (posSize == 0 && buyQty == 0 && sellQty == 0) $ do
+        atomicWriteIORef prevAsk newBestAsk
+        atomicWriteIORef prevBid newBestBid
         total <- atomically $ readTVar walletBalance
         let orderSize =
                 getOrderSize newBestAsk $
@@ -105,8 +107,6 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                      config
         return ()
     when (newBestAsk /= prevAsk' || newBestBid /= prevBid') $ do
-        atomicWriteIORef prevAsk newBestAsk
-        atomicWriteIORef prevBid newBestBid
         buyID' <- readIORef buyID
         sellID' <- readIORef sellID
         let diff = newBestAsk - newBestBid
@@ -119,13 +119,16 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                         buyID'
                         (newBestAsk - 0.5)
                     atomicWriteIORef
-                        prevAsk
+                        prevBid
                         (newBestAsk - 0.5)
+                    atomicWriteIORef prevAsk newBestAsk
                 else resetOrder
                          botState
                          config
                          buyID'
                          newBestBid
+                    atomicWriteIORef prevAsk newBestAsk
+                    atomicWriteIORef prevBid newBestBid
             return ()
         when (buyQty == 0 && sellQty /= 0) $ do
             if (diff > 0.5)
@@ -136,13 +139,17 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                         sellID'
                         (newBestBid + 0.5)
                     atomicWriteIORef
-                        prevBid
+                        prevAsk
                         (newBestBid + 0.5)
+                    atomicWriteIORef prevBid newBestBid
                 else resetOrder
                          botState
                          config
                          sellID'
                          newBestAsk
+                    atomicWriteIORef prevBid newBestBid
+                    atomicWriteIORef prevAsk newBestAsk
+
             return ()
 
 tradeLoop :: BitMEXBot ()
