@@ -122,7 +122,8 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                         prevBid
                         (newBestAsk - 0.5)
                     atomicWriteIORef prevAsk newBestAsk
-                else resetOrder
+                else do
+                    resetOrder
                          botState
                          config
                          buyID'
@@ -142,7 +143,8 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                         prevAsk
                         (newBestBid + 0.5)
                     atomicWriteIORef prevBid newBestBid
-                else resetOrder
+                else do
+                    resetOrder
                          botState
                          config
                          sellID'
