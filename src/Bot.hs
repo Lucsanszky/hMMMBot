@@ -72,13 +72,48 @@ trader ::
 trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid) (sellID, buyID) = do
     prevAsk' <- readIORef prevAsk
     prevBid' <- readIORef prevBid
-    sellQty <- readIORef openSells
-    buyQty <- readIORef openBuys
-    posSize <- readIORef positionSize
     when (newBestAsk /= prevAsk' || newBestBid /= prevBid') $ do
+        sellQty <- readIORef openSells
+        buyQty <- readIORef openBuys
+        posSize <- readIORef positionSize
         buyID' <- readIORef buyID
         sellID' <- readIORef sellID
         let diff = newBestAsk - newBestBid
+        when
+            ((posSize == 0 && (buyQty == 0 || sellQty == 0)) ||
+             (buyQty == 0 && sellQty == 0)) $ do
+            atomicWriteIORef prevAsk newBestAsk
+            atomicWriteIORef prevBid newBestBid
+            total <- atomically $ readTVar walletBalance
+            let orderSize =
+                    getOrderSize newBestAsk $
+                    fromIntegral total * lev
+                lev = Mex.unLeverage leverage
+                limit =
+                    getLimit newBestAsk $
+                    fromIntegral total * lev
+            available <-
+                liftIO $
+                atomically $ readTVar availableBalance
+            if (convert XBt_to_XBT (fromIntegral available)) >
+               convert USD_to_XBT newBestAsk *
+               (fromIntegral orderSize) /
+               lev
+                then do
+                    unWrapBotWith
+                        (makeMarket
+                             limit
+                             orderSize
+                             newBestAsk
+                             newBestBid
+                             (sellID, buyID))
+                        botState
+                        config
+                else unWrapBotWith
+                         (kill "not enough funds")
+                         botState
+                         config
+            return ()
         when (sellQty == 0 && buyQty /= 0) $ do
             if (diff > 0.5)
                     -- Don't amend if the bot has already done so.
@@ -132,39 +167,6 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                         newBestAsk
                     atomicWriteIORef prevBid newBestBid
                     atomicWriteIORef prevAsk newBestAsk
-            return ()
-        when (posSize == 0 && (buyQty == 0 || sellQty == 0)) $ do
-            atomicWriteIORef prevAsk newBestAsk
-            atomicWriteIORef prevBid newBestBid
-            total <- atomically $ readTVar walletBalance
-            let orderSize =
-                    getOrderSize newBestAsk $
-                    fromIntegral total * lev
-                lev = Mex.unLeverage leverage
-                limit =
-                    getLimit newBestAsk $
-                    fromIntegral total * lev
-            available <-
-                liftIO $
-                atomically $ readTVar availableBalance
-            if (convert XBt_to_XBT (fromIntegral available)) >
-               convert USD_to_XBT newBestAsk *
-               (fromIntegral orderSize) /
-               lev
-                then do
-                    unWrapBotWith
-                        (makeMarket
-                             limit
-                             orderSize
-                             newBestAsk
-                             newBestBid
-                             (sellID, buyID))
-                        botState
-                        config
-                else unWrapBotWith
-                         (kill "not enough funds")
-                         botState
-                         config
             return ()
 
 tradeLoop :: BitMEXBot ()
