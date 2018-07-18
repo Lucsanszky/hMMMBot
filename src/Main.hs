@@ -32,8 +32,7 @@ main = do
     priv <- B.readFile privPath
     user <- readFile esUserPath
     pw <- readFile esPasswordPath
-    logCxt <- initEsLogContext
-    let logCxtF = esLoggingContext user pw
+    logCxt <- initEsLogContext >>= esLoggingContext user pw
     let config =
             BitMEXWrapperConfig
             { environment = MainNet
@@ -45,7 +44,6 @@ main = do
             , logExecContext =
                   Mex.runDefaultLogExecWithContext
             , logContext = logCxt
-            , logContextFunction = logCxtF
             }
     connect
         config
