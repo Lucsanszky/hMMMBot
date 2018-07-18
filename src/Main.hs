@@ -36,7 +36,7 @@ main = do
     let logCxtF = esLoggingContext user pw
     let config =
             BitMEXWrapperConfig
-            { environment = TestNet
+            { environment = MainNet
             , pathREST = Just "/api/v1"
             , pathWS = Just "/realtime"
             , manager = Just mgr
