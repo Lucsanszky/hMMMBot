@@ -515,13 +515,13 @@ makeMarket limit orderSize ask bid (sellID, buyID) = do
                 | buys < limit =
                     [ limitBuy
                           Nothing
-                          sells
+                          (fromIntegral sells)
                           bid
                     ]
                 | otherwise =
                     [ limitSell
                           Nothing
-                          buys
+                          (fromIntegral buys)
                           ask
                     ]
         placeBulkOrder
