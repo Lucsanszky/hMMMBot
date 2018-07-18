@@ -9,17 +9,14 @@ module Bot.OrderTemplates
     , closePosition
     ) where
 
-import           BasicPrelude
+import           BasicPrelude hiding (id)
 import qualified BitMEX       as Mex
 import           BitMEXClient
-    ( BitMEXReader (..)
-    , BitMEXWrapperConfig
-    , ContingencyType (..)
+    ( ContingencyType (..)
     , ExecutionInstruction (..)
     , OrderType (..)
     , Side (..)
     , Symbol (..)
-    , makeRequest
     )
 import           Bot.Types
 import qualified Data.Text    as T (intercalate, pack)
@@ -50,7 +47,10 @@ prepareOrder (OrderID ordId) (ClientID clientId) (LinkID linkId) orderType side 
             , Mex.orderStopPx = stopPx
             , Mex.orderOrderQty = orderQty
             , Mex.orderExecInst =
-                  map ((T.intercalate ",") . (map (T.pack . show))) executionType
+                  map
+                      (T.intercalate "," .
+                       map (T.pack . show))
+                      executionType
             , Mex.orderContingencyType =
                   map (T.pack . show) contingencyType
             }
@@ -70,7 +70,7 @@ longPosStopLoss stopPx =
         (StopPx stopPx)
         (Qty Nothing)
         (Just [LastPrice, Close])
-        (Nothing)
+        Nothing
 
 shortPosStopLoss :: Maybe Double -> Mex.Order
 shortPosStopLoss stopPx =
@@ -84,7 +84,7 @@ shortPosStopLoss stopPx =
         (StopPx stopPx)
         (Qty Nothing)
         (Just [LastPrice, Close])
-        (Nothing)
+        Nothing
 
 closePosition :: Side -> Mex.Order
 closePosition side =
@@ -98,7 +98,7 @@ closePosition side =
         (StopPx Nothing)
         (Qty Nothing)
         (Just [Close])
-        (Nothing)
+        Nothing
 
 limitBuy :: Maybe Text -> Double -> Double -> Mex.Order
 limitBuy id orderSize bid =

@@ -26,7 +26,8 @@ import qualified System.Environment      as Env (getArgs)
 main :: IO ()
 main = do
     mgr <- newManager tlsManagerSettings
-    (pubPath:privPath:esUserPath:esPasswordPath:leverage:_) <- Env.getArgs
+    (pubPath:privPath:esUserPath:esPasswordPath:leverage:_) <-
+        Env.getArgs
     pub <- readFile pubPath
     priv <- B.readFile privPath
     user <- readFile esUserPath
@@ -35,7 +36,7 @@ main = do
     let logCxtF = esLoggingContext user pw
     let config =
             BitMEXWrapperConfig
-            { environment = MainNet
+            { environment = TestNet
             , pathREST = Just "/api/v1"
             , pathWS = Just "/realtime"
             , manager = Just mgr
@@ -46,4 +47,8 @@ main = do
             , logContext = logCxt
             , logContextFunction = logCxtF
             }
-    connect config (initBot (Mex.Leverage (read (T.pack leverage):: Double)))
+    connect
+        config
+        (initBot
+             (Mex.Leverage
+                  (read (T.pack leverage) :: Double)))

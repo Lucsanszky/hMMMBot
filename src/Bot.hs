@@ -4,50 +4,93 @@ module Bot
 
 import           BasicPrelude                   hiding
     ( head
-    , last
     )
 import qualified BitMEX                         as Mex
+    ( Accept (..)
+    , Leverage (..)
+    , Margin (..)
+    , MimeJSON (..)
+    , MimeResult (..)
+    , userGetMargin
+    )
 import           BitMEXClient
-import           Bot.Concurrent
-import           Bot.Math
-import           Bot.OrderTemplates
+    ( BitMEXApp
+    , BitMEXWrapperConfig (..)
+    , Command (..)
+    , RespExecution (..)
+    , RespMargin (..)
+    , RespOrderBook10 (..)
+    , RespPosition (..)
+    , Response (..)
+    , Symbol (..)
+    , TABLE (..)
+    , Topic (..)
+    , getMessage
+    , makeRequest
+    , makeTimestamp
+    , sendMessage
+    , sign
+    )
+import           Bot.Math                       (convert)
 import           Bot.RiskManager
+    ( lossLimitUpdater
+    , pnlTracker
+    , riskManager
+    , stopLossWatcher
+    )
 import           Bot.Types
+    ( BitMEXBot (..)
+    , BotState (..)
+    , OrderID (..)
+    , PnLQueue (..)
+    , PositionType (..)
+    , RiskManagerQueue (..)
+    , Rule (..)
+    , StopLossWatcherQueue (..)
+    )
 import           Bot.Util
-import           Control.Concurrent             (forkIO)
+    ( amendLimitOrder
+    , getLimit
+    , getOrderSize
+    , kill
+    , makeMarket
+    , unWrapBotWith
+    , updateLeverage
+    )
 import           Control.Concurrent.Async       (async)
 import qualified Control.Concurrent.Async       as A (link)
 import           Control.Concurrent.STM.TBQueue
+    ( newTBQueue
+    , writeTBQueue
+    )
 import           Control.Concurrent.STM.TVar
+    ( newTVar
+    , readTVar
+    , writeTVar
+    )
 import qualified Control.Monad.Reader           as R
     ( ask
     , asks
     , lift
     , runReaderT
     )
-import           Control.Monad.STM
+import           Control.Monad.STM              (atomically)
 import           Data.Aeson
     ( Value (String)
-    , encode
     , toJSON
     )
 import           Data.ByteString.Char8          (pack)
 import           Data.IORef
+    ( IORef
+    , atomicWriteIORef
+    , newIORef
+    , readIORef
+    )
+import           Data.Maybe                     (fromJust)
 import           Data.Time.Clock.POSIX
     ( getPOSIXTime
     )
-import           Data.Vector
-    ( head
-    , last
-    , (!)
-    , (!?)
-    )
-import           Network.HTTP.Client
-    ( responseStatus
-    )
-import qualified Network.HTTP.Types.Status      as HTTP
-    ( Status (..)
-    )
+import           Data.Vector                    (head, (!?))
 
 resetOrder ::
        BotState
@@ -95,42 +138,40 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
             available <-
                 liftIO $
                 atomically $ readTVar availableBalance
-            if (convert XBt_to_XBT (fromIntegral available)) >
+            if convert XBt_to_XBT (fromIntegral available) >
                convert USD_to_XBT newBestAsk *
-               (fromIntegral orderSize) /
+               fromIntegral orderSize /
                lev
-                then do
-                    unWrapBotWith
-                        (makeMarket
-                             limit
-                             orderSize
-                             newBestAsk
-                             newBestBid
-                             (sellID, buyID))
-                        botState
-                        config
+                then unWrapBotWith
+                         (makeMarket
+                              limit
+                              orderSize
+                              newBestAsk
+                              newBestBid
+                              (sellID, buyID))
+                         botState
+                         config
                 else unWrapBotWith
                          (kill "not enough funds")
                          botState
                          config
             return ()
         when (sellQty == 0 && buyQty /= 0) $ do
-            if (diff > 0.5)
+            if diff > 0.5
                     -- Don't amend if the bot has already done so.
                     -- I.e.: previous value was updated locally,
                     -- thus it differs from the exchange's value
-                then do
-                    when (prevBid' == newBestBid) $ do
-                        resetOrder
-                            botState
-                            config
-                            buyID'
-                            buyID
-                            (newBestAsk - 0.5)
-                        atomicWriteIORef
-                            prevBid
-                            (newBestAsk - 0.5)
-                        atomicWriteIORef prevAsk newBestAsk
+                then when (prevBid' == newBestBid) $ do
+                         resetOrder
+                             botState
+                             config
+                             buyID'
+                             buyID
+                             (newBestAsk - 0.5)
+                         atomicWriteIORef
+                             prevBid
+                             (newBestAsk - 0.5)
+                         atomicWriteIORef prevAsk newBestAsk
                 else do
                     resetOrder
                         botState
@@ -142,22 +183,21 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                     atomicWriteIORef prevBid newBestBid
             return ()
         when (buyQty == 0 && sellQty /= 0) $ do
-            if (diff > 0.5)
+            if diff > 0.5
                     -- Don't amend if the bot has already done so.
                     -- I.e.: previous value was updated locally,
                     -- thus it differs from the exchange's value
-                then do
-                    when (prevAsk' == newBestAsk) $ do
-                        resetOrder
-                            botState
-                            config
-                            sellID'
-                            sellID
-                            (newBestBid + 0.5)
-                        atomicWriteIORef
-                            prevAsk
-                            (newBestBid + 0.5)
-                        atomicWriteIORef prevBid newBestBid
+                then when (prevAsk' == newBestAsk) $ do
+                         resetOrder
+                             botState
+                             config
+                             sellID'
+                             sellID
+                             (newBestBid + 0.5)
+                         atomicWriteIORef
+                             prevAsk
+                             (newBestBid + 0.5)
+                         atomicWriteIORef prevBid newBestBid
                 else do
                     resetOrder
                         botState
@@ -171,8 +211,8 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
 
 tradeLoop :: BitMEXBot ()
 tradeLoop = do
-    config <- BitMEXBot $ R.lift $ R.ask
-    botState@(BotState {..}) <- R.ask
+    config <- BitMEXBot $ R.lift R.ask
+    botState@BotState {..} <- R.ask
     liftIO $ do
         risk <-
             async $ forever $ riskManager botState config
@@ -195,12 +235,12 @@ processResponse ::
     -> (IORef OrderID, IORef OrderID)
     -> Maybe Response
     -> IO ()
-processResponse botState@BotState {..} config prevPrices ids@(sellID, buyID) msg = do
+processResponse botState@BotState {..} config prevPrices ids msg =
     case msg of
         Nothing -> return ()
         Just r ->
             case r of
-                OB10 (TABLE {_data = orderBookData}) -> do
+                OB10 TABLE {_data = orderBookData} -> do
                     let RespOrderBook10 { asks = newAsks
                                         , bids = newBids
                                         } =
@@ -213,62 +253,55 @@ processResponse botState@BotState {..} config prevPrices ids@(sellID, buyID) msg
                         (newBestAsk, newBestBid)
                         prevPrices
                         ids
-                posResp@(P (TABLE {_data = positionData})) -> do
+                posResp@(P TABLE {_data = positionData}) -> do
                     let RespPosition { currentQty = currQty
                                      , openOrderBuyQty = buyQty
                                      , openOrderBuyCost = buyCost
                                      , openOrderSellQty = sellQty
                                      , openOrderSellCost = sellCost
                                      } = head positionData
-                    when (currQty /= Nothing) $ do
-                        let Just q = map floor currQty
+                    when (isJust currQty) $ do
+                        let q = fromJust $ map floor currQty
                         atomicWriteIORef positionSize q
                         atomically $
                             writeTBQueue
                                 (unRiskManagerQueue
                                      riskManagerQueue)
                                 (Just posResp)
-                    when (buyQty /= Nothing) $ do
-                        let Just b = buyQty
-                        atomicWriteIORef openBuys b
-                    when (buyCost /= Nothing) $ do
-                        let Just bc = buyCost
-                        atomicWriteIORef openBuyCost bc
-                    when (sellQty /= Nothing) $ do
-                        let Just s = sellQty
-                        atomicWriteIORef openSells s
-                    when (sellCost /= Nothing) $ do
-                        let Just sc = sellCost
-                        atomicWriteIORef openSellCost sc
-                marginResp@(M (TABLE {_data = marginData})) -> do
+                    forM_ buyQty $ atomicWriteIORef openBuys
+                    forM_ buyCost $
+                        atomicWriteIORef openBuyCost
+                    forM_ sellQty $
+                        atomicWriteIORef openSells
+                    forM_ sellCost $
+                        atomicWriteIORef openSellCost
+                M TABLE {_data = marginData} -> do
                     let RespMargin { realisedPnl = rpnl
                                    , availableMargin = ab
                                    , walletBalance = wb
                                    } = head marginData
-                    when (rpnl /= Nothing) $ do
-                        let Just p = rpnl
-                        atomically $ writeTVar realPnl p
-                    when (ab /= Nothing) $ do
-                        let Just b = ab
+                    when (isJust rpnl) $
                         atomically $
-                            writeTVar availableBalance b
-                    when (wb /= Nothing) $ do
-                        let Just w = wb
+                        writeTVar realPnl $ fromJust rpnl
+                    when (isJust ab) $
                         atomically $
-                            writeTVar walletBalance w
-                execResp@(Exe (TABLE {_data = execData})) -> do
+                        writeTVar availableBalance $
+                        fromJust ab
+                    when (isJust wb) $
+                        atomically $
+                        writeTVar walletBalance $
+                        fromJust wb
+                execResp@(Exe TABLE {_data = execData}) ->
                     case execData !? 0 of
                         Nothing -> return ()
-                        Just (RespExecution { triggered = text
-                                            , ordStatus = stat
-                                            }) -> do
+                        Just RespExecution {triggered = text} ->
                             when
                                 (text ==
-                                 Just "StopOrderTriggered") $ do
-                                atomically $
-                                    writeTBQueue
-                                        (unSLWQueue slwQueue)
-                                        (Just execResp)
+                                 Just "StopOrderTriggered") $
+                            atomically $
+                            writeTBQueue
+                                (unSLWQueue slwQueue)
+                                (Just execResp)
                 _ -> return ()
 
 initBot :: Mex.Leverage -> BitMEXApp ()
@@ -280,9 +313,9 @@ initBot leverage conn = do
     Mex.MimeResult {Mex.mimeResult = res} <-
         makeRequest $
         Mex.userGetMargin (Mex.Accept Mex.MimeJSON)
-    let Right (Mex.Margin { Mex.marginWalletBalance = Just wb
-                          , Mex.marginAvailableMargin = Just ab
-                          }) = res
+    let Right Mex.Margin { Mex.marginWalletBalance = Just wb
+                         , Mex.marginAvailableMargin = Just ab
+                         } = res
     riskManagerQueue <- liftIO $ atomically $ newTBQueue 100
     slwQueue <- liftIO $ atomically $ newTBQueue 100
     pnlQueue <- liftIO $ atomically $ newTBQueue 100

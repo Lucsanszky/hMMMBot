@@ -1,39 +1,22 @@
 module Bot.Concurrent
-    (
-     readResponse
+    ( readResponse
     , updateVar
-    -- , waitForPriceChange
     ) where
 
-import           BasicPrelude                   hiding
-    ( head
-    )
+import           BasicPrelude
 import           BitMEXClient
-    ( RespExecution (..)
-    , RespMargin (..)
-    , RespOrderBook10 (..)
-    , RespPosition (..)
-    , Response (..)
-    , TABLE (..)
+    ( Response (..)
     )
-import           Bot.Math
-import           Bot.Types
 import           Control.Concurrent.STM.TBQueue
     ( TBQueue
     , readTBQueue
-    , writeTBQueue
     )
 import           Control.Concurrent.STM.TVar
     ( TVar
     , readTVar
     , writeTVar
     )
-import           Control.Monad.STM
-    ( STM
-    , atomically
-    , retry
-    )
-import           Data.Vector                    (head, (!?))
+import           Control.Monad.STM              (STM, retry)
 
 readResponse :: TBQueue (Maybe Response) -> STM Response
 readResponse q = do

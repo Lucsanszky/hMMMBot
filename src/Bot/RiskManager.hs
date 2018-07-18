@@ -7,30 +7,31 @@ module Bot.RiskManager
 
 import           BasicPrelude                hiding (head)
 import qualified BitMEX                      as Mex
-    ( Accept (..)
-    , ContentType (..)
-    , MimeJSON (..)
-    , Order (..)
-    , orderCancelAll
+    ( Order (..)
     )
 import           BitMEXClient
     ( BitMEXWrapperConfig
     , RespExecution (..)
-    , RespMargin (..)
     , RespPosition (..)
     , Response (..)
-    , Side (..)
     , TABLE (..)
-    , makeRequest
     )
 import           Bot.Concurrent              (readResponse)
 import           Bot.Math                    (roundPrice)
 import           Bot.OrderTemplates
+    ( longPosStopLoss
+    , shortPosStopLoss
+    )
 import           Bot.Types
+    ( BitMEXBot
+    , BotState (..)
+    , OrderID (..)
+    , PositionType (..)
+    , RiskManagerQueue (..)
+    , StopLossWatcherQueue (..)
+    )
 import           Bot.Util
-    ( cancelLimitOrders
-    , cancelOrders
-    , cancelStopOrder
+    ( cancelStopOrder
     , kill
     , placeOrder
     , placeStopOrder
@@ -42,10 +43,7 @@ import           Control.Concurrent.STM.TVar
     ( readTVar
     , writeTVar
     )
-import qualified Control.Monad.Reader        as R
-    ( ask
-    , asks
-    )
+import qualified Control.Monad.Reader        as R (asks)
 import           Control.Monad.STM           (atomically)
 import           Data.Vector                 (head, (!?))
 
@@ -57,8 +55,8 @@ manageStopLoss newStopLoss newPos = do
     prevPos <-
         R.asks prevPosition >>=
         (liftIO . atomically . readTVar)
-    when (oid == Nothing || prevPos /= newPos) $ do
-        when (oid /= Nothing && prevPos /= newPos) $
+    when (isNothing oid || prevPos /= newPos) $ do
+        when (isJust oid && prevPos /= newPos) $
             cancelStopOrder (OrderID oid)
         placeStopOrder (placeOrder newStopLoss)
         pSize <- R.asks prevPosition
@@ -71,7 +69,7 @@ manageRisk 0 _ = do
         R.asks stopOrderId >>=
         (liftIO . atomically . readTVar)
     case oid of
-        Just i -> do
+        Just _ -> do
             cancelStopOrder (OrderID oid)
             pSize <- R.asks prevPosition
             liftIO $ atomically $ writeTVar pSize None
@@ -96,29 +94,28 @@ riskManager botState@BotState {..} config = do
         atomically $
         readResponse $ unRiskManagerQueue riskManagerQueue
     case resp of
-        P (TABLE {_data = positionData}) -> do
+        P TABLE {_data = positionData} -> do
             let RespPosition { execQty = qty
                              , currentQty = currQty
                              , avgCostPrice = avgPrice
                              } = head positionData
             case qty >> currQty of
                 Nothing -> return ()
-                Just q -> do
-                    (unWrapBotWith
-                         (manageRisk q avgPrice)
-                         botState
-                         config)
-        _ -> do
-            return ()
+                Just q ->
+                    unWrapBotWith
+                        (manageRisk q avgPrice)
+                        botState
+                        config
+        _ -> return ()
 
 stopLossWatcher :: BotState -> BitMEXWrapperConfig -> IO ()
 stopLossWatcher botState@BotState {..} config = do
     resp <- atomically $ readResponse $ unSLWQueue slwQueue
     case resp of
-        Exe (TABLE {_data = execData}) -> do
+        Exe TABLE {_data = execData} ->
             case execData !? 0 of
                 Nothing -> return ()
-                Just (RespExecution {triggered = text}) ->
+                Just RespExecution {triggered = text} ->
                     case text of
                         Just "StopOrderTriggered" ->
                             unWrapBotWith
@@ -130,9 +127,8 @@ stopLossWatcher botState@BotState {..} config = do
 
 -- | Update the balance every hour
 lossLimitUpdater :: BotState -> BitMEXWrapperConfig -> IO ()
-lossLimitUpdater botState@BotState {..} config = do
+lossLimitUpdater BotState {..} _ = do
     threadDelay 3600000000
-    prev <- liftIO $ atomically $ readTVar prevBalance
     current <- liftIO $ atomically $ readTVar walletBalance
     liftIO $ atomically $ writeTVar prevBalance current
 
@@ -140,10 +136,5 @@ pnlTracker :: BotState -> BitMEXWrapperConfig -> IO ()
 pnlTracker botState@BotState {..} config = do
     prev <- liftIO $ atomically $ readTVar prevBalance
     current <- liftIO $ atomically $ readTVar walletBalance
-    if fromIntegral current / fromIntegral prev <= 0.8
-        then do
-            unWrapBotWith
-                (kill "lost too much")
-                botState
-                config
-        else return ()
+    when (fromIntegral current / fromIntegral prev <= 0.8) $
+        unWrapBotWith (kill "lost too much") botState config

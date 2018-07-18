@@ -29,7 +29,6 @@ import           Control.Monad.Reader
     , ReaderT
     )
 import           Data.IORef
-import           Data.Vector                    (Vector)
 import           Network.WebSockets             (Connection)
 
 newtype StopPx =
@@ -61,11 +60,11 @@ newtype RiskManagerQueue = RiskManagerQueue
     }
 
 newtype StopLossWatcherQueue = StopLossWatcherQueue
-    { unSLWQueue :: (TBQueue (Maybe Response))
+    { unSLWQueue :: TBQueue (Maybe Response)
     }
 
 newtype PnLQueue = PnLQueue
-    { unPnlQueue :: (TBQueue (Maybe Response))
+    { unPnlQueue :: TBQueue (Maybe Response)
     }
 
 data PositionType
