@@ -4,7 +4,7 @@ module Bot.Math
     ) where
 
 import           BasicPrelude
-import           Bot.Types
+import           Bot.Types    (Rule (..))
 
 roundPrice :: Double -> Double
 roundPrice = fromIntegral . floor

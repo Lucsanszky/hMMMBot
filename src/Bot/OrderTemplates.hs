@@ -10,7 +10,7 @@ module Bot.OrderTemplates
     ) where
 
 import           BasicPrelude hiding (id)
-import qualified BitMEX       as Mex
+import qualified BitMEX       as Mex (Order (..), mkOrder)
 import           BitMEXClient
     ( ContingencyType (..)
     , ExecutionInstruction (..)
@@ -19,6 +19,13 @@ import           BitMEXClient
     , Symbol (..)
     )
 import           Bot.Types
+    ( ClientID (..)
+    , LimitPx (..)
+    , LinkID (..)
+    , OrderID (..)
+    , Qty (..)
+    , StopPx (..)
+    )
 import qualified Data.Text    as T (intercalate, pack)
 
 prepareOrder ::
