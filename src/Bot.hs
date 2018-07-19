@@ -316,9 +316,9 @@ initBot leverage conn = do
     let Right Mex.Margin { Mex.marginWalletBalance = Just wb
                          , Mex.marginAvailableMargin = Just ab
                          } = res
-    riskManagerQueue <- liftIO $ atomically $ newTBQueue 100
-    slwQueue <- liftIO $ atomically $ newTBQueue 100
-    pnlQueue <- liftIO $ atomically $ newTBQueue 100
+    riskManagerQueue <- liftIO $ atomically $ newTBQueue 1
+    slwQueue <- liftIO $ atomically $ newTBQueue 1
+    pnlQueue <- liftIO $ atomically $ newTBQueue 1
     prevPosition <- liftIO $ atomically $ newTVar None
     positionSize <- liftIO $ newIORef 0
     realPnl <- liftIO $ atomically $ newTVar 0
