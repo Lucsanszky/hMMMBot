@@ -156,7 +156,7 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                          botState
                          config
             return ()
-        when (sellQty == 0 && buyQty /= 0) $ do
+        when (sellQty == 0 && buyQty /= 0 && newBestBid >= prevBid') $ do
             if diff > 0.5
                     -- Don't amend if the bot has already done so.
                     -- I.e.: previous value was updated locally,
@@ -182,7 +182,7 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                     atomicWriteIORef prevAsk newBestAsk
                     atomicWriteIORef prevBid newBestBid
             return ()
-        when (buyQty == 0 && sellQty /= 0) $ do
+        when (buyQty == 0 && sellQty /= 0 && newBestAsk <= prevAsk') $ do
             if diff > 0.5
                     -- Don't amend if the bot has already done so.
                     -- I.e.: previous value was updated locally,
