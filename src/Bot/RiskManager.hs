@@ -125,10 +125,10 @@ stopLossWatcher botState@BotState {..} config = do
                         _ -> return ()
         _ -> return ()
 
--- | Update the balance every hour
+-- | Update the balance every 8 hours
 lossLimitUpdater :: BotState -> BitMEXWrapperConfig -> IO ()
 lossLimitUpdater BotState {..} _ = do
-    threadDelay 3600000000
+    threadDelay 28800000000
     current <- liftIO $ atomically $ readTVar walletBalance
     liftIO $ atomically $ writeTVar prevBalance current
 
@@ -136,5 +136,5 @@ pnlTracker :: BotState -> BitMEXWrapperConfig -> IO ()
 pnlTracker botState@BotState {..} config = do
     prev <- liftIO $ atomically $ readTVar prevBalance
     current <- liftIO $ atomically $ readTVar walletBalance
-    when (fromIntegral current / fromIntegral prev <= 0.8) $
+    when (fromIntegral current / fromIntegral prev <= 0.9) $
         unWrapBotWith (kill "lost too much") botState config
