@@ -240,62 +240,63 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                  (kill "not enough funds")
                  botState
                  config
-    when
-        (sellQty == 0 &&
-         buyQty /= 0 && newBestBid >= prevBid') $ do
-        if diff > 0.5
-                -- Don't amend if the bot has already done so.
-                -- I.e.: previous value was updated locally,
-                -- thus it differs from the exchange's value
-            then when (prevBid' == newBestBid) $ do
-                     resetOrder
-                         botState
-                         config
-                         buyID'
-                         buyID
-                         (newBestAsk - 0.5)
-                     atomicWriteIORef
-                         prevBid
-                         (newBestAsk - 0.5)
-                     atomicWriteIORef prevAsk newBestAsk
-            else do
-                resetOrder
-                    botState
-                    config
-                    buyID'
-                    buyID
-                    newBestBid
-                atomicWriteIORef prevAsk newBestAsk
-                atomicWriteIORef prevBid newBestBid
-        return ()
-    when
-        (buyQty == 0 &&
-         sellQty /= 0 && newBestAsk <= prevAsk') $ do
-        if diff > 0.5
-                -- Don't amend if the bot has already done so.
-                -- I.e.: previous value was updated locally,
-                -- thus it differs from the exchange's value
-            then when (prevAsk' == newBestAsk) $ do
-                     resetOrder
-                         botState
-                         config
-                         sellID'
-                         sellID
-                         (newBestBid + 0.5)
-                     atomicWriteIORef
-                         prevAsk
-                         (newBestBid + 0.5)
-                     atomicWriteIORef prevBid newBestBid
-            else do
-                resetOrder
-                    botState
-                    config
-                    sellID'
-                    sellID
-                    newBestAsk
-                atomicWriteIORef prevBid newBestBid
-                atomicWriteIORef prevAsk newBestAsk
-        return ()
+    when (prevAsk' /= newBestAsk || prevBid' /= newBestBid) $ do
+        when
+            (sellQty == 0 &&
+            buyQty /= 0 && newBestBid >= prevBid') $ do
+            if diff > 0.5
+                    -- Don't amend if the bot has already done so.
+                    -- I.e.: previous value was updated locally,
+                    -- thus it differs from the exchange's value
+                then when (prevBid' == newBestBid) $ do
+                        resetOrder
+                            botState
+                            config
+                            buyID'
+                            buyID
+                            (newBestAsk - 0.5)
+                        atomicWriteIORef
+                            prevBid
+                            (newBestAsk - 0.5)
+                        atomicWriteIORef prevAsk newBestAsk
+                else do
+                    resetOrder
+                        botState
+                        config
+                        buyID'
+                        buyID
+                        newBestBid
+                    atomicWriteIORef prevAsk newBestAsk
+                    atomicWriteIORef prevBid newBestBid
+            return ()
+        when
+            (buyQty == 0 &&
+            sellQty /= 0 && newBestAsk <= prevAsk') $ do
+            if diff > 0.5
+                    -- Don't amend if the bot has already done so.
+                    -- I.e.: previous value was updated locally,
+                    -- thus it differs from the exchange's value
+                then when (prevAsk' == newBestAsk) $ do
+                        resetOrder
+                            botState
+                            config
+                            sellID'
+                            sellID
+                            (newBestBid + 0.5)
+                        atomicWriteIORef
+                            prevAsk
+                            (newBestBid + 0.5)
+                        atomicWriteIORef prevBid newBestBid
+                else do
+                    resetOrder
+                        botState
+                        config
+                        sellID'
+                        sellID
+                        newBestAsk
+                    atomicWriteIORef prevBid newBestBid
+                    atomicWriteIORef prevAsk newBestAsk
+            return ()
 
 tradeLoop :: BitMEXBot ()
 tradeLoop = do
