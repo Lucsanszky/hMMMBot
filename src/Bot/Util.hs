@@ -232,7 +232,11 @@ placeBulkOrder orders orderSize ask bid ids = do
                          ask
                          bid
                          ids
-                 else kill "order didn't go through"
+                 else if code == 429
+                         then do
+                             liftIO $ threadDelay 1000000
+                             return ()
+                         else kill "order didn't go through"
 
 amendOrder ::
        Mex.Order -> BitMEXBot (Mex.MimeResult Mex.Order)
@@ -279,8 +283,11 @@ amendLimitOrder cid@(OrderID (Just _)) idRef price = do
                           then do
                               liftIO $ threadDelay 250000
                               return ()
-                          else kill
-                                   "amending limit order failed"
+                          else if code == 429
+                                  then do
+                                      liftIO $ threadDelay 1000000
+                                      return ()
+                                  else kill "amending limit order failed"
 amendLimitOrder (OrderID Nothing) _ _ = return ()
 
 bulkAmendOrders ::
@@ -332,8 +339,11 @@ amendStopOrder oid stopPx = do
                           then do
                               liftIO $ threadDelay 500000
                               amendStopOrder oid stopPx
-                          else kill
-                                   "amending stop order failed"
+                          else if code == 429
+                                  then do
+                                      liftIO $ threadDelay 1000000
+                                      return ()
+                                  else kill "amending stop order failed"
 
 cancelStopOrder :: OrderID -> BitMEXBot ()
 cancelStopOrder so@(OrderID (Just oid)) = do
