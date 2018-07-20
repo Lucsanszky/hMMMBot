@@ -55,6 +55,7 @@ executable hMMMBot
                  Bot.Concurrent
                  Bot.Util
                  Bot.Math
+                 Bot.Trader
                  Bot.Types
                  Bot.RiskManager
                  Bot.OrderTemplates

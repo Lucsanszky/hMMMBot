@@ -1,6 +1,7 @@
 module Bot.Util
     ( makeMarket
     , prepareOrder
+    , resetOrder
     , placeBulkOrder
     , amendLimitOrder
     , cancelLimitOrders
@@ -490,6 +491,19 @@ incrementQty orderSize side =
              if stat == Just "New" && side == side'
                  then orderSize
                  else 0)
+
+resetOrder ::
+       BotState
+    -> BitMEXWrapperConfig
+    -> OrderID
+    -> IORef OrderID
+    -> Double
+    -> IO ()
+resetOrder botState config oid idRef price =
+    unWrapBotWith
+        (amendLimitOrder oid idRef (Just price))
+        botState
+        config
 
 makeMarket ::
        Text
