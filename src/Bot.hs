@@ -391,7 +391,7 @@ initBot leverage conn = do
     openSells <- liftIO $ newIORef 0
     openSellCost <- liftIO $ newIORef 0
     prevBid <- liftIO $ newIORef 0.0
-    prevAsk <- liftIO $ newIORef 0.0
+    prevAsk <- liftIO $ newIORef 99999999999.0
     sellID <- liftIO $ newIORef (OrderID Nothing)
     buyID <- liftIO $ newIORef (OrderID Nothing)
     stopOrderId <-
