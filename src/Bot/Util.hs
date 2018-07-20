@@ -507,13 +507,13 @@ makeMarket action limit orderSize ask bid (sellID, buyID) = do
                 | action == "Buy" && buys < limit =
                     [ limitBuy
                           Nothing
-                          (fromIntegral sells)
+                          (fromIntegral orderSize)
                           bid
                     ]
                 | action == "Sell" && sells < limit =
                     [ limitSell
                           Nothing
-                          (fromIntegral buys)
+                          (fromIntegral orderSize)
                           ask
                     ]
                 | otherwise = []
