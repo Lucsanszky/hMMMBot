@@ -120,6 +120,16 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
     posSize <- readIORef positionSize
     buyID' <- readIORef buyID
     sellID' <- readIORef sellID
+    total <- atomically $ readTVar walletBalance
+    let orderSize =
+            getOrderSize newBestAsk $
+            fromIntegral total * lev
+        diff = newBestAsk - newBestBid
+        lev = Mex.unLeverage leverage
+        limit =
+            getLimit newBestAsk $
+            fromIntegral total * lev
+
     when (posSize > 0 && sellQty == 0) $ do
         let ask
                 | diff > 0.5 = newBestBid + 0.5
@@ -153,15 +163,6 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
         atomicWriteIORef prevAsk newBestAsk
         atomicWriteIORef prevBid bid
     when (prevAsk' /= newBestAsk || prevBid' /= newBestBid) $ do
-        total <- atomically $ readTVar walletBalance
-        let orderSize =
-                getOrderSize newBestAsk $
-                fromIntegral total * lev
-            diff = newBestAsk - newBestBid
-            lev = Mex.unLeverage leverage
-            limit =
-                getLimit newBestAsk $
-                fromIntegral total * lev
         available <-
             liftIO $ atomically $ readTVar availableBalance
         if convert XBt_to_XBT (fromIntegral available) >
