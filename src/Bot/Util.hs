@@ -163,6 +163,7 @@ placeBulkOrder ::
     -> Double
     -> (IORef OrderID, IORef OrderID)
     -> BitMEXBot ()
+placeBulkOrder [] _ _ _ _ = return ()
 placeBulkOrder orders orderSize ask bid ids = do
     obs <- R.asks openBuys
     obc <- R.asks openBuyCost
@@ -481,13 +482,14 @@ incrementQty orderSize side =
                  else 0)
 
 makeMarket ::
-       Integer
+       Text
+    -> Integer
     -> Integer
     -> Double
     -> Double
     -> (IORef OrderID, IORef OrderID)
     -> BitMEXBot ()
-makeMarket limit orderSize ask bid (sellID, buyID) = do
+makeMarket action limit orderSize ask bid (sellID, buyID) = do
     BotState {..} <- R.ask
     size <- liftIO $ readIORef positionSize
     buys' <- liftIO $ readIORef openBuys
@@ -502,28 +504,19 @@ makeMarket limit orderSize ask bid (sellID, buyID) = do
                 else sells'
     when (buys < limit || sells < limit) $ do
         let orders
-                | buys < limit && sells < limit =
-                    [ limitSell
-                          Nothing
-                          (fromIntegral orderSize)
-                          ask
-                    , limitBuy
-                          Nothing
-                          (fromIntegral orderSize)
-                          bid
-                    ]
-                | buys < limit =
+                | action == "Buy" && buys < limit =
                     [ limitBuy
                           Nothing
                           (fromIntegral sells)
                           bid
                     ]
-                | otherwise =
+                | action == "Sell" && sells < limit =
                     [ limitSell
                           Nothing
                           (fromIntegral buys)
                           ask
                     ]
+                | otherwise = []
         placeBulkOrder
             orders
             orderSize
