@@ -512,24 +512,27 @@ makeMarket action limit orderSize ask bid (sellID, buyID) = do
             if size < 0
                 then abs size + sells'
                 else sells'
+        oSize = if abs size == 0
+                  then orderSize
+                  else size
     when (buys < limit || sells < limit) $ do
         let orders
                 | action == "Buy" && buys < limit =
                     [ limitBuy
                           Nothing
-                          (fromIntegral orderSize)
+                          (fromIntegral oSize)
                           bid
                     ]
                 | action == "Sell" && sells < limit =
                     [ limitSell
                           Nothing
-                          (fromIntegral orderSize)
+                          (fromIntegral oSize)
                           ask
                     ]
                 | otherwise = []
         placeBulkOrder
             orders
-            orderSize
+            oSize
             ask
             bid
             (sellID, buyID)
