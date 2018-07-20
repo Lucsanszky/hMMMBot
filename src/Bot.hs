@@ -50,6 +50,7 @@ import           Bot.Types
     )
 import           Bot.Util
     ( amendLimitOrder
+    , cancelLimitOrders
     , getLimit
     , getOrderSize
     , kill
@@ -124,44 +125,35 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
     let orderSize =
             getOrderSize newBestAsk $
             fromIntegral total * lev
-        diff = newBestAsk - newBestBid
         lev = Mex.unLeverage leverage
         limit =
-            getLimit newBestAsk $
-            fromIntegral total * lev
-
+            getLimit newBestAsk $ fromIntegral total * lev
     when (posSize > 0 && sellQty == 0) $ do
-        let ask
-                | diff > 0.5 = newBestBid + 0.5
-                | otherwise = newBestAsk
         unWrapBotWith
             (makeMarket
                  "Sell"
                  limit
                  orderSize
-                 ask
+                 (newBestBid + 0.5)
                  newBestBid
                  (sellID, buyID))
             botState
             config
-        atomicWriteIORef prevAsk ask
+        atomicWriteIORef prevAsk (newBestBid + 0.5)
         atomicWriteIORef prevBid newBestBid
     when (posSize < 0 && buyQty == 0) $ do
-        let bid
-                | diff > 0.5 = newBestAsk - 0.5
-                | otherwise = newBestBid
         unWrapBotWith
             (makeMarket
                  "Buy"
                  limit
                  orderSize
                  newBestAsk
-                 bid
+                 (newBestAsk - 0.5)
                  (sellID, buyID))
             botState
             config
         atomicWriteIORef prevAsk newBestAsk
-        atomicWriteIORef prevBid bid
+        atomicWriteIORef prevBid (newBestAsk - 0.5)
     when (prevAsk' /= newBestAsk || prevBid' /= newBestBid) $ do
         available <-
             liftIO $ atomically $ readTVar availableBalance
@@ -176,21 +168,19 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                      sellQty == 0 && posSize == 0) $ do
                     if (newBestBid < prevBid')
                         then do
-                            let ask
-                                    | diff > 0.5 =
-                                        newBestBid + 0.5
-                                    | otherwise = newBestAsk
                             unWrapBotWith
                                 (makeMarket
                                      "Sell"
                                      limit
                                      orderSize
-                                     ask
+                                     (newBestBid + 0.5)
                                      newBestBid
                                      (sellID, buyID))
                                 botState
                                 config
-                            atomicWriteIORef prevAsk ask
+                            atomicWriteIORef
+                                prevAsk
+                                (newBestBid + 0.5)
                             atomicWriteIORef
                                 prevBid
                                 newBestBid
@@ -207,24 +197,22 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                      buyQty == 0 && posSize == 0) $ do
                     if (newBestAsk > prevAsk')
                         then do
-                            let bid
-                                    | diff > 0.5 =
-                                        newBestAsk - 0.5
-                                    | otherwise = newBestBid
                             unWrapBotWith
                                 (makeMarket
                                      "Buy"
                                      limit
                                      orderSize
                                      newBestAsk
-                                     bid
+                                     (newBestAsk - 0.5)
                                      (sellID, buyID))
                                 botState
                                 config
                             atomicWriteIORef
                                 prevAsk
                                 newBestAsk
-                            atomicWriteIORef prevBid bid
+                            atomicWriteIORef
+                                prevBid
+                                (newBestAsk - 0.5)
                         else do
                             atomicWriteIORef
                                 prevAsk
@@ -236,61 +224,69 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                      (kill "not enough funds")
                      botState
                      config
-        when
-            (sellQty == 0 &&
-             buyQty /= 0 && newBestBid >= prevBid') $ do
-            if diff > 0.5
-                    -- Don't amend if the bot has already done so.
-                    -- I.e.: previous value was updated locally,
-                    -- thus it differs from the exchange's value
-                then when (prevBid' == newBestBid) $ do
-                         resetOrder
-                             botState
-                             config
-                             buyID'
-                             buyID
-                             (newBestAsk - 0.5)
-                         atomicWriteIORef
-                             prevBid
-                             (newBestAsk - 0.5)
-                         atomicWriteIORef prevAsk newBestAsk
-                else do
+        when (sellQty == 0 && buyQty /= 0) $ do
+            if (newBestBid >= prevBid')
+                then do
                     resetOrder
                         botState
                         config
                         buyID'
                         buyID
-                        newBestBid
+                        (newBestAsk - 0.5)
                     atomicWriteIORef prevAsk newBestAsk
+                    atomicWriteIORef
+                        prevBid
+                        (newBestAsk - 0.5)
+                else do
+                    unWrapBotWith
+                        (cancelLimitOrders "Buy" >>
+                         makeMarket
+                             "Sell"
+                             limit
+                             orderSize
+                             (newBestBid + 0.5)
+                             newBestBid
+                             (sellID, buyID))
+                        botState
+                        config
+                    atomicWriteIORef buyID (OrderID Nothing)
+                    atomicWriteIORef
+                        prevAsk
+                        (newBestBid + 0.5)
                     atomicWriteIORef prevBid newBestBid
             return ()
-        when
-            (buyQty == 0 &&
-             sellQty /= 0 && newBestAsk <= prevAsk') $ do
-            if diff > 0.5
-                    -- Don't amend if the bot has already done so.
-                    -- I.e.: previous value was updated locally,
-                    -- thus it differs from the exchange's value
-                then when (prevAsk' == newBestAsk) $ do
-                         resetOrder
-                             botState
-                             config
-                             sellID'
-                             sellID
-                             (newBestBid + 0.5)
-                         atomicWriteIORef
-                             prevAsk
-                             (newBestBid + 0.5)
-                         atomicWriteIORef prevBid newBestBid
-                else do
+        when (buyQty == 0 && sellQty /= 0) $ do
+            if (newBestAsk <= prevAsk')
+                then do
                     resetOrder
                         botState
                         config
                         sellID'
                         sellID
-                        newBestAsk
+                        (newBestBid + 0.5)
+                    atomicWriteIORef
+                        prevAsk
+                        (newBestBid + 0.5)
                     atomicWriteIORef prevBid newBestBid
+                else do
+                    unWrapBotWith
+                        (cancelLimitOrders "Sell" >>
+                         makeMarket
+                             "Buy"
+                             limit
+                             orderSize
+                             newBestAsk
+                             (newBestAsk - 0.5)
+                             (sellID, buyID))
+                        botState
+                        config
+                    atomicWriteIORef
+                        sellID
+                        (OrderID Nothing)
                     atomicWriteIORef prevAsk newBestAsk
+                    atomicWriteIORef
+                        prevBid
+                        (newBestAsk - 0.5)
             return ()
 
 tradeLoop :: BitMEXBot ()
