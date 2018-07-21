@@ -164,8 +164,8 @@ initBot leverage conn = do
             forever $ do
                 msg <- getMessage conn config
                 processResponse
+                    msg
                     botState
                     config
-                    msg
         A.link processor
     R.runReaderT (runBot tradeLoop) botState

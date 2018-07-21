@@ -37,11 +37,11 @@ import qualified Data.Vector                 as V
     )
 
 trader ::
-       BotState
+    Vector RespOrderBookL2
+    -> BotState
     -> BitMEXWrapperConfig
-    -> Vector RespOrderBookL2
     -> IO ()
-trader botState@BotState {..} config vectorOBL2 = do
+trader vectorOBL2 botState@BotState {..} config = do
     let buys =
             map (\x -> getPrice $ id (x :: RespOrderBookL2)) $
             V.filter
