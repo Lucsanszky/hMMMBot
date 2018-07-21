@@ -103,13 +103,6 @@ riskManager botState@BotState {..} config = do
                              , currentQty = currQty
                              , avgCostPrice = avgPrice
                              } = head positionData
-            case qty >> currQty of
-                Nothing -> return ()
-                Just q ->
-                    unWrapBotWith
-                        (manageRisk q avgPrice)
-                        botState
-                        config
             case currQty of
                 Nothing -> return ()
                 Just q -> do
@@ -144,6 +137,13 @@ riskManager botState@BotState {..} config = do
                                  bid)
                             botState
                             config
+            case qty >> currQty of
+                Nothing -> return ()
+                Just q ->
+                    unWrapBotWith
+                        (manageRisk q avgPrice)
+                        botState
+                        config
         _ -> return ()
 
 stopLossWatcher :: BotState -> BitMEXWrapperConfig -> IO ()
