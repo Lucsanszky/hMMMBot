@@ -6,14 +6,13 @@ module Bot.Concurrent
 
 import           BasicPrelude
 import           BitMEXClient
-    ( Response (..)
-    )
-import           BitMEXClient
-    ( BitMEXWrapperConfig (..)
+    ( Action (..)
+    , BitMEXWrapperConfig (..)
     , RespExecution (..)
     , RespMargin (..)
     , RespOrderBook10 (..)
     , RespPosition (..)
+    , Response (..)
     , TABLE (..)
     )
 import           Bot.Trader                     (trader)
@@ -55,17 +54,16 @@ processResponse botState@BotState {..} config msg =
         Nothing -> return ()
         Just r ->
             case r of
+                OB TABLE {_action = Delete
+                         , _data = orderBookData} -> do
+                    trader botState config orderBookData
                 OB10 TABLE {_data = orderBookData} -> do
                     let RespOrderBook10 { asks = newAsks
                                         , bids = newBids
                                         } =
                             V.head orderBookData
-                        newBestAsk = V.head $ V.head newAsks
-                        newBestBid = V.head $ V.head newBids
-                    trader
-                        botState
-                        config
-                        (newBestAsk, newBestBid)
+                    atomicWriteIORef bestAsk $ V.head $ V.head newAsks
+                    atomicWriteIORef bestBid $ V.head $ V.head newBids
                 posResp@(P TABLE {_data = positionData}) -> do
                     let RespPosition { currentQty = currQty
                                      , openOrderBuyQty = buyQty

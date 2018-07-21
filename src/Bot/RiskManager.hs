@@ -19,7 +19,9 @@ import           BitMEXClient
 import           Bot.Concurrent              (readResponse)
 import           Bot.Math                    (roundPrice)
 import           Bot.OrderTemplates
-    ( longPosStopLoss
+    ( limitBuy
+    , limitSell
+    , longPosStopLoss
     , shortPosStopLoss
     )
 import           Bot.Types
@@ -33,6 +35,7 @@ import           Bot.Types
 import           Bot.Util
     ( cancelStopOrder
     , kill
+    , placeBulkOrder
     , placeOrder
     , placeStopOrder
     , restart
@@ -45,6 +48,7 @@ import           Control.Concurrent.STM.TVar
     )
 import qualified Control.Monad.Reader        as R (asks)
 import           Control.Monad.STM           (atomically)
+import           Data.IORef                  (readIORef)
 import           Data.Vector                 (head, (!?))
 
 manageStopLoss :: Mex.Order -> PositionType -> BitMEXBot ()
@@ -80,11 +84,27 @@ manageRisk currQty avgCostPrice
         let roundedPrice =
                 map (roundPrice . (* 0.99)) avgCostPrice
             newStopLoss = longPosStopLoss roundedPrice
+        sellQty <- R.asks openSells >>= liftIO . readIORef
+        when (sellQty == 0) $ do
+            ask <- R.asks bestAsk >>= liftIO . readIORef
+            bid <- R.asks bestBid >>= liftIO . readIORef
+            let o = [limitSell Nothing currQty ask]
+            placeBulkOrder o (truncate currQty) ask bid
         manageStopLoss newStopLoss Long
     | currQty < 0 = do
         let roundedPrice =
                 map (roundPrice . (* 1.01)) avgCostPrice
             newStopLoss = shortPosStopLoss roundedPrice
+        buyQty <- R.asks openBuys >>= liftIO . readIORef
+        when (buyQty == 0) $ do
+            ask <- R.asks bestAsk >>= liftIO . readIORef
+            bid <- R.asks bestBid >>= liftIO . readIORef
+            let o = [limitBuy Nothing (abs currQty) bid]
+            placeBulkOrder
+                o
+                ((abs . truncate) currQty)
+                ask
+                bid
         manageStopLoss newStopLoss Short
     | otherwise = return ()
 

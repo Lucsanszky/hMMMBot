@@ -2,15 +2,19 @@ module Bot.Trader
     ( trader
     ) where
 
-import           BasicPrelude                hiding (head)
+import           BasicPrelude                hiding (id)
 import qualified BitMEX                      as Mex
     ( Leverage (..)
     )
-
 import           BitMEXClient
     ( BitMEXWrapperConfig (..)
+    , RespOrderBookL2 (..)
+    , Side (..)
     )
-import           Bot.Math                    (convert)
+import           Bot.Math
+    ( convert
+    , getPrice
+    )
 import           Bot.Types
     ( BotState (..)
     , Rule (..)
@@ -25,144 +29,106 @@ import           Bot.Util
     )
 import           Control.Concurrent.STM.TVar (readTVar)
 import           Control.Monad.STM           (atomically)
-import           Data.IORef
-    ( atomicWriteIORef
-    , readIORef
+import           Data.IORef                  (readIORef)
+import qualified Data.Vector                 as V
+    ( filter
+    , head
+    , last
     )
 
 trader ::
        BotState
     -> BitMEXWrapperConfig
-    -> (Double, Double)
+    -> Vector RespOrderBookL2
     -> IO ()
-trader botState@BotState {..} config (newBestAsk, newBestBid) = do
-    prevAsk' <- readIORef prevAsk
-    prevBid' <- readIORef prevBid
+trader botState@BotState {..} config vectorOBL2 = do
+    let buys =
+            map (\x -> getPrice $ id (x :: RespOrderBookL2)) $
+            V.filter
+                (\x -> side (x :: RespOrderBookL2) == Buy)
+                vectorOBL2
+        sells =
+            map (\x -> getPrice $ id (x :: RespOrderBookL2)) $
+            V.filter
+                (\x -> side (x :: RespOrderBookL2) == Sell)
+                vectorOBL2
+    bestAsk' <- readIORef bestAsk
+    bestBid' <- readIORef bestBid
     sellQty <- readIORef openSells
     buyQty <- readIORef openBuys
     posSize <- readIORef positionSize
     buyID' <- readIORef buyID
     sellID' <- readIORef sellID
     total <- atomically $ readTVar walletBalance
+    available <-
+        liftIO $ atomically $ readTVar availableBalance
     let orderSize =
-            getOrderSize newBestAsk $
-            fromIntegral total * lev
+            getOrderSize bestAsk' $ fromIntegral total * lev
         lev = Mex.unLeverage leverage
-        limit =
-            getLimit newBestAsk $ fromIntegral total * lev
-    when (posSize > 0 && sellQty == 0) $ do
-        unWrapBotWith
-            (makeMarket
-                 "Sell"
-                 limit
-                 orderSize
-                 (newBestBid + 0.5)
-                 newBestBid)
-            botState
-            config
-        atomicWriteIORef prevAsk (newBestBid + 0.5)
-        atomicWriteIORef prevBid newBestBid
-    when (posSize < 0 && buyQty == 0) $ do
-        unWrapBotWith
-            (makeMarket
-                 "Buy"
-                 limit
-                 orderSize
-                 newBestAsk
-                 (newBestAsk - 0.5))
-            botState
-            config
-        atomicWriteIORef prevAsk newBestAsk
-        atomicWriteIORef prevBid (newBestAsk - 0.5)
-    when (prevAsk' /= newBestAsk || prevBid' /= newBestBid) $ do
-        available <-
-            liftIO $ atomically $ readTVar availableBalance
-        if convert XBt_to_XBT (fromIntegral available) >
-           convert USD_to_XBT newBestAsk *
-           fromIntegral orderSize /
-           lev
-            then do
-                when
-                    (newBestBid /= prevBid' &&
-                     buyQty == 0 &&
-                     sellQty == 0 && posSize == 0) $ do
-                    if (newBestBid < prevBid')
-                        then do
-                            unWrapBotWith
-                                (makeMarket
-                                     "Sell"
-                                     limit
-                                     orderSize
-                                     (newBestBid + 0.5)
-                                     newBestBid)
-                                botState
-                                config
-                            atomicWriteIORef
-                                prevAsk
-                                (newBestBid + 0.5)
-                            atomicWriteIORef
-                                prevBid
-                                newBestBid
-                        else do
-                            atomicWriteIORef
-                                prevAsk
-                                newBestAsk
-                            atomicWriteIORef
-                                prevBid
-                                newBestBid
-                when
-                    (newBestAsk /= prevAsk' &&
-                     sellQty == 0 &&
-                     buyQty == 0 && posSize == 0) $ do
-                    if (newBestAsk > prevAsk')
-                        then do
-                            unWrapBotWith
-                                (makeMarket
-                                     "Buy"
-                                     limit
-                                     orderSize
-                                     newBestAsk
-                                     (newBestAsk - 0.5))
-                                botState
-                                config
-                            atomicWriteIORef
-                                prevAsk
-                                newBestAsk
-                            atomicWriteIORef
-                                prevBid
-                                (newBestAsk - 0.5)
-                        else do
-                            atomicWriteIORef
-                                prevAsk
-                                newBestAsk
-                            atomicWriteIORef
-                                prevBid
-                                newBestBid
-            else unWrapBotWith
-                     (kill "not enough funds")
-                     botState
-                     config
+        limit = getLimit bestAsk' $ fromIntegral total * lev
+    when (length sells > 0) $ do
         when
-            (sellQty == 0 &&
-             buyQty /= 0 && newBestBid >= prevBid') $ do
-            unWrapBotWith
-                (amendLimitOrder
-                     buyID'
-                     buyID
-                     (Just (newBestAsk - 0.5)))
-                botState
-                config
-            atomicWriteIORef prevAsk newBestAsk
-            atomicWriteIORef prevBid (newBestAsk - 0.5)
+            (V.last sells == bestAsk' &&
+             (V.head sells - bestBid' < 4.0)) $ do
+            when
+                (sellQty == 0 && buyQty == 0 && posSize == 0) $ do
+                if convert
+                       XBt_to_XBT
+                       (fromIntegral available) >
+                   convert USD_to_XBT bestAsk' *
+                   fromIntegral orderSize /
+                   lev
+                    then unWrapBotWith
+                             (makeMarket
+                                  "Buy"
+                                  limit
+                                  orderSize
+                                  bestAsk'
+                                  (V.head sells))
+                             botState
+                             config
+                    else unWrapBotWith
+                             (kill "not enough funds")
+                             botState
+                             config
+            when (sellQty == 0 && buyQty /= 0) $ do
+                unWrapBotWith
+                    (amendLimitOrder
+                         buyID'
+                         buyID
+                         (Just (V.head sells)))
+                    botState
+                    config
+    when (length buys > 0) $ do
         when
-            (buyQty == 0 &&
-             sellQty /= 0 && newBestAsk <= prevAsk') $ do
-            unWrapBotWith
-                (amendLimitOrder
-                     sellID'
-                     sellID
-                     (Just (newBestBid + 0.5)))
-                botState
-                config
-            atomicWriteIORef prevAsk (newBestBid + 0.5)
-            atomicWriteIORef prevBid newBestBid
+            (V.head buys == bestBid' &&
+             (bestAsk' - V.last buys < 4.0)) $ do
+            when
+                (sellQty == 0 && buyQty == 0 && posSize == 0) $ do
+                if convert
+                       XBt_to_XBT
+                       (fromIntegral available) >
+                   convert USD_to_XBT bestAsk' *
+                   fromIntegral orderSize /
+                   lev
+                    then unWrapBotWith
+                             (makeMarket
+                                  "Sell"
+                                  limit
+                                  orderSize
+                                  (V.last buys)
+                                  bestBid')
+                             botState
+                             config
+                    else unWrapBotWith
+                             (kill "not enough funds")
+                             botState
+                             config
+            when (sellQty /= 0 && buyQty == 0) $ do
+                unWrapBotWith
+                    (amendLimitOrder
+                         sellID'
+                         sellID
+                         (Just (V.last buys)))
+                    botState
+                    config

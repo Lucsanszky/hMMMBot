@@ -87,7 +87,6 @@ tradeLoop = do
   where
     loop = loop
 
-
 initBot :: Mex.Leverage -> BitMEXApp ()
 initBot leverage conn = do
     config <- R.ask
@@ -115,8 +114,8 @@ initBot leverage conn = do
     openBuyCost <- liftIO $ newIORef 0
     openSells <- liftIO $ newIORef 0
     openSellCost <- liftIO $ newIORef 0
-    prevBid <- liftIO $ newIORef 0.0
-    prevAsk <- liftIO $ newIORef 99999999999.0
+    bestBid <- liftIO $ newIORef 0.0
+    bestAsk <- liftIO $ newIORef 99999999999.0
     sellID <- liftIO $ newIORef (OrderID Nothing)
     buyID <- liftIO $ newIORef (OrderID Nothing)
     stopOrderId <-
@@ -134,8 +133,8 @@ initBot leverage conn = do
             , prevBalance = prevBalance
             , availableBalance = availableBalance
             , walletBalance = walletBalance
-            , prevAsk = prevAsk
-            , prevBid = prevBid
+            , bestAsk = bestAsk
+            , bestBid = bestBid
             , openBuys = openBuys
             , openBuyCost = openBuyCost
             , openSells = openSells
@@ -155,6 +154,7 @@ initBot leverage conn = do
             conn
             Subscribe
             ([ OrderBook10 XBTUSD
+             , OrderBookL2 XBTUSD
              , Execution
              , Position
              , Margin
