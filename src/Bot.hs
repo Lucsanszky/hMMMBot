@@ -134,10 +134,14 @@ initBot leverage conn = do
             , prevBalance = prevBalance
             , availableBalance = availableBalance
             , walletBalance = walletBalance
+            , prevAsk = prevAsk
+            , prevBid = prevBid
             , openBuys = openBuys
             , openBuyCost = openBuyCost
             , openSells = openSells
             , openSellCost = openSellCost
+            , buyID = buyID
+            , sellID = sellID
             , stopOrderId = stopOrderId
             , leverage = leverage
             }
@@ -162,8 +166,6 @@ initBot leverage conn = do
                 processResponse
                     botState
                     config
-                    (prevAsk, prevBid)
-                    (sellID, buyID)
                     msg
         A.link processor
     R.runReaderT (runBot tradeLoop) botState

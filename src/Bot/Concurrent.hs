@@ -19,7 +19,6 @@ import           BitMEXClient
 import           Bot.Trader                     (trader)
 import           Bot.Types
     ( BotState (..)
-    , OrderID (..)
     , RiskManagerQueue (..)
     , StopLossWatcherQueue (..)
     )
@@ -38,8 +37,7 @@ import           Control.Concurrent.STM.TVar
 import           Control.Monad.STM              (atomically)
 import           Control.Monad.STM              (STM, retry)
 import           Data.IORef
-    ( IORef
-    , atomicWriteIORef
+    ( atomicWriteIORef
     )
 import           Data.Maybe                     (fromJust)
 import qualified Data.Vector                    as V
@@ -50,11 +48,9 @@ import qualified Data.Vector                    as V
 processResponse ::
        BotState
     -> BitMEXWrapperConfig
-    -> (IORef Double, IORef Double)
-    -> (IORef OrderID, IORef OrderID)
     -> Maybe Response
     -> IO ()
-processResponse botState@BotState {..} config prevPrices ids msg =
+processResponse botState@BotState {..} config msg =
     case msg of
         Nothing -> return ()
         Just r ->
@@ -70,8 +66,6 @@ processResponse botState@BotState {..} config prevPrices ids msg =
                         botState
                         config
                         (newBestAsk, newBestBid)
-                        prevPrices
-                        ids
                 posResp@(P TABLE {_data = positionData}) -> do
                     let RespPosition { currentQty = currQty
                                      , openOrderBuyQty = buyQty

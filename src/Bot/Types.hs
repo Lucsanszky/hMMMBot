@@ -88,12 +88,16 @@ data BotState = BotState
     , prevBalance      :: !(TVar Integer)
     , availableBalance :: !(TVar Integer)
     , walletBalance    :: !(TVar Integer)
+    , prevAsk          :: !(IORef Double)
+    , prevBid          :: !(IORef Double)
     , prevPosition     :: !(TVar PositionType)
     , positionSize     :: !(IORef Integer)
     , openBuys         :: !(IORef Integer)
     , openSells        :: !(IORef Integer)
     , openBuyCost      :: !(IORef Integer)
     , openSellCost     :: !(IORef Integer)
+    , buyID            :: !(IORef OrderID)
+    , sellID           :: !(IORef OrderID)
     , stopOrderId      :: !(TVar OrderID)
     , leverage         :: !Mex.Leverage
     }

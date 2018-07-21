@@ -1,7 +1,6 @@
 module Bot.Util
     ( makeMarket
     , prepareOrder
-    , resetOrder
     , placeBulkOrder
     , amendLimitOrder
     , cancelLimitOrders
@@ -162,14 +161,15 @@ placeBulkOrder ::
     -> Integer
     -> Double
     -> Double
-    -> (IORef OrderID, IORef OrderID)
     -> BitMEXBot ()
-placeBulkOrder [] _ _ _ _ = return ()
-placeBulkOrder orders orderSize ask bid ids = do
+placeBulkOrder [] _ _ _ = return ()
+placeBulkOrder orders orderSize ask bid = do
     obs <- R.asks openBuys
     obc <- R.asks openBuyCost
     oss <- R.asks openSells
     osc <- R.asks openSellCost
+    sellID' <- R.asks sellID
+    buyID' <- R.asks buyID
     buys' <- liftIO $ readIORef obs
     sells' <- liftIO $ readIORef oss
     openBC <- liftIO $ readIORef obc
@@ -182,6 +182,7 @@ placeBulkOrder orders orderSize ask bid ids = do
             Mex._setBodyLBS orderTemplate $ "{\"orders\": " <>
             encode orders <>
             "}"
+        ids = (sellID', buyID')
     Mex.MimeResult { Mex.mimeResultResponse = resp
                    , Mex.mimeResult = res
                    } <-
@@ -227,17 +228,13 @@ placeBulkOrder orders orderSize ask bid ids = do
         else if code == 503 || code == 502
                  then do
                      liftIO $ threadDelay 250000
-                     placeBulkOrder
-                         orders
-                         orderSize
-                         ask
-                         bid
-                         ids
+                     placeBulkOrder orders orderSize ask bid
                  else if code == 429
-                         then do
-                             liftIO $ threadDelay 1000000
-                             return ()
-                         else kill "order didn't go through"
+                          then do
+                              liftIO $ threadDelay 1000000
+                              return ()
+                          else kill
+                                   "order didn't go through"
 
 amendOrder ::
        Mex.Order -> BitMEXBot (Mex.MimeResult Mex.Order)
@@ -285,10 +282,13 @@ amendLimitOrder cid@(OrderID (Just _)) idRef price = do
                               liftIO $ threadDelay 250000
                               return ()
                           else if code == 429
-                                  then do
-                                      liftIO $ threadDelay 1000000
-                                      return ()
-                                  else kill "amending limit order failed"
+                                   then do
+                                       liftIO $
+                                           threadDelay
+                                               1000000
+                                       return ()
+                                   else kill
+                                            "amending limit order failed"
 amendLimitOrder (OrderID Nothing) _ _ = return ()
 
 bulkAmendOrders ::
@@ -341,10 +341,13 @@ amendStopOrder oid stopPx = do
                               liftIO $ threadDelay 500000
                               amendStopOrder oid stopPx
                           else if code == 429
-                                  then do
-                                      liftIO $ threadDelay 1000000
-                                      return ()
-                                  else kill "amending stop order failed"
+                                   then do
+                                       liftIO $
+                                           threadDelay
+                                               1000000
+                                       return ()
+                                   else kill
+                                            "amending stop order failed"
 
 cancelStopOrder :: OrderID -> BitMEXBot ()
 cancelStopOrder so@(OrderID (Just oid)) = do
@@ -492,28 +495,14 @@ incrementQty orderSize side =
                  then orderSize
                  else 0)
 
-resetOrder ::
-       BotState
-    -> BitMEXWrapperConfig
-    -> OrderID
-    -> IORef OrderID
-    -> Double
-    -> IO ()
-resetOrder botState config oid idRef price =
-    unWrapBotWith
-        (amendLimitOrder oid idRef (Just price))
-        botState
-        config
-
 makeMarket ::
        Text
     -> Integer
     -> Integer
     -> Double
     -> Double
-    -> (IORef OrderID, IORef OrderID)
     -> BitMEXBot ()
-makeMarket action limit orderSize ask bid (sellID, buyID) = do
+makeMarket action limit orderSize ask bid = do
     BotState {..} <- R.ask
     size <- liftIO $ readIORef positionSize
     buys' <- liftIO $ readIORef openBuys
@@ -526,9 +515,10 @@ makeMarket action limit orderSize ask bid (sellID, buyID) = do
             if size < 0
                 then abs size + sells'
                 else sells'
-        oSize = if abs size == 0
-                  then orderSize
-                  else size
+        oSize =
+            if abs size == 0
+                then orderSize
+                else size
     when (buys < limit || sells < limit) $ do
         let orders
                 | action == "Buy" && buys < limit =
@@ -544,9 +534,4 @@ makeMarket action limit orderSize ask bid (sellID, buyID) = do
                           ask
                     ]
                 | otherwise = []
-        placeBulkOrder
-            orders
-            oSize
-            ask
-            bid
-            (sellID, buyID)
+        placeBulkOrder orders oSize ask bid

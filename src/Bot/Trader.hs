@@ -13,22 +13,20 @@ import           BitMEXClient
 import           Bot.Math                    (convert)
 import           Bot.Types
     ( BotState (..)
-    , OrderID (..)
     , Rule (..)
     )
 import           Bot.Util
-    ( getLimit
+    ( amendLimitOrder
+    , getLimit
     , getOrderSize
     , kill
     , makeMarket
-    , resetOrder
     , unWrapBotWith
     )
 import           Control.Concurrent.STM.TVar (readTVar)
 import           Control.Monad.STM           (atomically)
 import           Data.IORef
-    ( IORef
-    , atomicWriteIORef
+    ( atomicWriteIORef
     , readIORef
     )
 
@@ -36,10 +34,8 @@ trader ::
        BotState
     -> BitMEXWrapperConfig
     -> (Double, Double)
-    -> (IORef Double, IORef Double)
-    -> (IORef OrderID, IORef OrderID)
     -> IO ()
-trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid) (sellID, buyID) = do
+trader botState@BotState {..} config (newBestAsk, newBestBid) = do
     prevAsk' <- readIORef prevAsk
     prevBid' <- readIORef prevBid
     sellQty <- readIORef openSells
@@ -61,8 +57,7 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                  limit
                  orderSize
                  (newBestBid + 0.5)
-                 newBestBid
-                 (sellID, buyID))
+                 newBestBid)
             botState
             config
         atomicWriteIORef prevAsk (newBestBid + 0.5)
@@ -74,8 +69,7 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                  limit
                  orderSize
                  newBestAsk
-                 (newBestAsk - 0.5)
-                 (sellID, buyID))
+                 (newBestAsk - 0.5))
             botState
             config
         atomicWriteIORef prevAsk newBestAsk
@@ -100,8 +94,7 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                                      limit
                                      orderSize
                                      (newBestBid + 0.5)
-                                     newBestBid
-                                     (sellID, buyID))
+                                     newBestBid)
                                 botState
                                 config
                             atomicWriteIORef
@@ -129,8 +122,7 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
                                      limit
                                      orderSize
                                      newBestAsk
-                                     (newBestAsk - 0.5)
-                                     (sellID, buyID))
+                                     (newBestAsk - 0.5))
                                 botState
                                 config
                             atomicWriteIORef
@@ -153,22 +145,24 @@ trader botState@BotState {..} config (newBestAsk, newBestBid) (prevAsk, prevBid)
         when
             (sellQty == 0 &&
              buyQty /= 0 && newBestBid >= prevBid') $ do
-            resetOrder
+            unWrapBotWith
+                (amendLimitOrder
+                     buyID'
+                     buyID
+                     (Just (newBestAsk - 0.5)))
                 botState
                 config
-                buyID'
-                buyID
-                (newBestAsk - 0.5)
             atomicWriteIORef prevAsk newBestAsk
             atomicWriteIORef prevBid (newBestAsk - 0.5)
         when
             (buyQty == 0 &&
              sellQty /= 0 && newBestAsk <= prevAsk') $ do
-            resetOrder
+            unWrapBotWith
+                (amendLimitOrder
+                     sellID'
+                     sellID
+                     (Just (newBestBid + 0.5)))
                 botState
                 config
-                sellID'
-                sellID
-                (newBestBid + 0.5)
             atomicWriteIORef prevAsk (newBestBid + 0.5)
             atomicWriteIORef prevBid newBestBid
