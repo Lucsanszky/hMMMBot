@@ -84,27 +84,11 @@ manageRisk currQty avgCostPrice
         let roundedPrice =
                 map (roundPrice . (* 0.99)) avgCostPrice
             newStopLoss = longPosStopLoss roundedPrice
-        sellQty <- R.asks openSells >>= liftIO . readIORef
-        when (sellQty == 0) $ do
-            ask <- R.asks bestAsk >>= liftIO . readIORef
-            bid <- R.asks bestBid >>= liftIO . readIORef
-            let o = [limitSell Nothing currQty ask]
-            placeBulkOrder o (truncate currQty) ask bid
         manageStopLoss newStopLoss Long
     | currQty < 0 = do
         let roundedPrice =
                 map (roundPrice . (* 1.01)) avgCostPrice
             newStopLoss = shortPosStopLoss roundedPrice
-        buyQty <- R.asks openBuys >>= liftIO . readIORef
-        when (buyQty == 0) $ do
-            ask <- R.asks bestAsk >>= liftIO . readIORef
-            bid <- R.asks bestBid >>= liftIO . readIORef
-            let o = [limitBuy Nothing (abs currQty) bid]
-            placeBulkOrder
-                o
-                ((abs . truncate) currQty)
-                ask
-                bid
         manageStopLoss newStopLoss Short
     | otherwise = return ()
 
@@ -126,6 +110,40 @@ riskManager botState@BotState {..} config = do
                         (manageRisk q avgPrice)
                         botState
                         config
+            case currQty of
+                Nothing -> return ()
+                Just q -> do
+                    sellQty <- readIORef openSells
+                    buyQty <- readIORef openBuys
+                    when (buyQty == 0 && q < 0) $ do
+                        ask <- readIORef bestAsk
+                        bid <- readIORef bestBid
+                        let o =
+                                [ limitBuy
+                                      Nothing
+                                      (abs q)
+                                      bid
+                                ]
+                        unWrapBotWith
+                            (placeBulkOrder
+                                 o
+                                 ((abs . truncate) q)
+                                 ask
+                                 bid)
+                            botState
+                            config
+                    when (sellQty == 0 && q > 0) $ do
+                        ask <- readIORef bestAsk
+                        bid <- readIORef bestBid
+                        let o = [limitSell Nothing q ask]
+                        unWrapBotWith
+                            (placeBulkOrder
+                                 o
+                                 (truncate q)
+                                 ask
+                                 bid)
+                            botState
+                            config
         _ -> return ()
 
 stopLossWatcher :: BotState -> BitMEXWrapperConfig -> IO ()
