@@ -19,6 +19,7 @@ import           BitMEXClient
     , Command (..)
     , Symbol (..)
     , Topic (..)
+    , connect
     , getMessage
     , makeRequest
     , makeTimestamp
@@ -46,7 +47,10 @@ import           Bot.Types
 import           Bot.Util
     ( updateLeverage
     )
-import           Control.Concurrent.Async       (async)
+import           Control.Concurrent.Async
+    ( async
+    , waitCatch
+    )
 import qualified Control.Concurrent.Async       as A (link)
 import           Control.Concurrent.STM.TBQueue (newTBQueue)
 import           Control.Concurrent.STM.TVar    (newTVar)
@@ -146,6 +150,19 @@ initBot leverage conn = do
             }
     _ <- updateLeverage XBTUSD leverage
     liftIO $ do
+        processor <-
+            async $
+            forever $ do
+                msg <- getMessage conn config
+                processResponse
+                    msg
+                    botState
+                    config
+        _ <- async $ forever $ do
+                eres <- waitCatch processor
+                case eres of
+                    Right _ -> return ()
+                    Left _  -> connect config (initBot leverage)
         sendMessage
             conn
             AuthKey
@@ -159,13 +176,4 @@ initBot leverage conn = do
              , Position
              , Margin
              ] :: [Topic Symbol])
-        processor <-
-            async $
-            forever $ do
-                msg <- getMessage conn config
-                processResponse
-                    msg
-                    botState
-                    config
-        A.link processor
     R.runReaderT (runBot tradeLoop) botState
