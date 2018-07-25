@@ -17,10 +17,12 @@ import           Bot.Math
     )
 import           Bot.Types
     ( BotState (..)
+    , OrderID (..)
     , Rule (..)
     )
 import           Bot.Util
     ( amendLimitOrder
+    , cancelLimitOrders
     , getLimit
     , getOrderSize
     , kill
@@ -66,6 +68,10 @@ trader vectorOBL2 botState@BotState {..} config = do
             getOrderSize bestAsk' $ fromIntegral total * lev
         lev = Mex.unLeverage leverage
         limit = getLimit bestAsk' $ fromIntegral total * lev
+    when (sellQty /= 0 && sellID' == OrderID Nothing) $
+        unWrapBotWith (cancelLimitOrders "Sell") botState config
+    when (buyQty /= 0 && buyID' == OrderID Nothing) $
+        unWrapBotWith (cancelLimitOrders "Buy") botState config
     when (length sells > 0) $ do
         when
             (V.last sells == bestAsk' &&
