@@ -75,7 +75,7 @@ trader vectorOBL2 botState@BotState {..} config = do
     when (length sells > 0) $ do
         when
             (V.last sells == bestAsk' &&
-             (V.head sells - bestBid' < 4.0)) $ do
+             (V.head sells - bestBid' < 10.0)) $ do
             when
                 (sellQty == 0 && buyQty == 0 && posSize == 0) $ do
                 if convert
@@ -105,10 +105,19 @@ trader vectorOBL2 botState@BotState {..} config = do
                          (Just (V.head sells)))
                     botState
                     config
+            when (sellQty /= 0 && buyQty == 0) $ do
+                unWrapBotWith
+                    (amendLimitOrder
+                         sellID'
+                         sellID
+                         (Just (V.head sells + 0.5)))
+                    botState
+                    config
+
     when (length buys > 0) $ do
         when
             (V.head buys == bestBid' &&
-             (bestAsk' - V.last buys < 4.0)) $ do
+             (bestAsk' - V.last buys < 10.0)) $ do
             when
                 (sellQty == 0 && buyQty == 0 && posSize == 0) $ do
                 if convert
@@ -136,5 +145,13 @@ trader vectorOBL2 botState@BotState {..} config = do
                          sellID'
                          sellID
                          (Just (V.last buys)))
+                    botState
+                    config
+            when (sellQty == 0 && buyQty /= 0) $ do
+                unWrapBotWith
+                    (amendLimitOrder
+                         buyID'
+                         buyID
+                         (Just (V.last buys - 0.5)))
                     botState
                     config
