@@ -274,6 +274,10 @@ amendLimitOrder cid@(OrderID (Just _)) idRef price = do
                                  atomicWriteIORef
                                      idRef
                                      (OrderID Nothing)
+                             oss <- R.asks openSells
+                             obs <- R.asks openBuys
+                             liftIO $ atomicWriteIORef oss 0
+                             liftIO $ atomicWriteIORef obs 0
                              return ()
                          else kill
                                   "amending limit order failed"

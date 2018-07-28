@@ -19,7 +19,9 @@ import           BitMEXClient
 import           Bot.Concurrent              (readResponse)
 import           Bot.Math                    (roundPrice)
 import           Bot.OrderTemplates
-    ( longPosStopLoss
+    ( limitBuy
+    , limitSell
+    , longPosStopLoss
     , shortPosStopLoss
     )
 import           Bot.Types
@@ -33,6 +35,7 @@ import           Bot.Types
 import           Bot.Util
     ( cancelStopOrder
     , kill
+    , placeBulkOrder
     , placeOrder
     , placeStopOrder
     , restart
@@ -45,6 +48,7 @@ import           Control.Concurrent.STM.TVar
     )
 import qualified Control.Monad.Reader        as R (asks)
 import           Control.Monad.STM           (atomically)
+import           Data.IORef                  (readIORef)
 import           Data.Vector                 (head, (!?))
 
 manageStopLoss :: Mex.Order -> PositionType -> BitMEXBot ()
@@ -99,6 +103,40 @@ riskManager botState@BotState {..} config = do
                              , currentQty = currQty
                              , avgCostPrice = avgPrice
                              } = head positionData
+            case currQty of
+                Nothing -> return ()
+                Just q -> do
+                    sellQty <- readIORef openSells
+                    buyQty <- readIORef openBuys
+                    when (buyQty == 0 && q < 0) $ do
+                        ask <- readIORef bestAsk
+                        bid <- readIORef bestBid
+                        let o =
+                                [ limitBuy
+                                      Nothing
+                                      (abs q)
+                                      bid
+                                ]
+                        unWrapBotWith
+                            (placeBulkOrder
+                                 o
+                                 ((abs . truncate) q)
+                                 ask
+                                 bid)
+                            botState
+                            config
+                    when (sellQty == 0 && q > 0) $ do
+                        ask <- readIORef bestAsk
+                        bid <- readIORef bestBid
+                        let o = [limitSell Nothing q ask]
+                        unWrapBotWith
+                            (placeBulkOrder
+                                 o
+                                 (truncate q)
+                                 ask
+                                 bid)
+                            botState
+                            config
             case qty >> currQty of
                 Nothing -> return ()
                 Just q ->
