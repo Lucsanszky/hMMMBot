@@ -234,7 +234,7 @@ placeBulkOrder orders orderSize ask bid = do
                               liftIO $ threadDelay 1000000
                               return ()
                           else kill
-                                   "order didn't go through"
+                                   ("order didn't go through " <> show code <> show resp)
 
 amendOrder ::
        Mex.Order -> BitMEXBot (Mex.MimeResult Mex.Order)
