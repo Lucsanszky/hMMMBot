@@ -446,8 +446,10 @@ restart = do
         atomically $ writeTVar stopOrderId (OrderID Nothing)
         atomicWriteIORef positionSize 0
         atomically $ writeTVar prevPosition None
+        atomicWriteIORef buyID (OrderID Nothing)
         atomicWriteIORef openBuys 0
         atomicWriteIORef openBuyCost 0
+        atomicWriteIORef sellID (OrderID Nothing)
         atomicWriteIORef openSells 0
         atomicWriteIORef openSellCost 0
 
