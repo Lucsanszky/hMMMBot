@@ -71,11 +71,7 @@ import           Bot.Types
     , Rule (..)
     )
 import           Control.Concurrent          (threadDelay)
-import           Control.Concurrent.STM.TVar
-    ( TVar
-    , readTVar
-    , writeTVar
-    )
+import           Control.Concurrent.STM.TVar (writeTVar)
 import qualified Control.Monad.Reader        as R
     ( ask
     , asks
@@ -85,6 +81,11 @@ import           Control.Monad.STM           (atomically)
 import           Data.Aeson
     ( decode
     , encode
+    )
+import           Data.IORef
+    ( IORef
+    , atomicWriteIORef
+    , readIORef
     )
 import           Data.Maybe                  (fromJust)
 import qualified Data.Text                   as T (pack)
@@ -137,7 +138,7 @@ cancelOrders ids = do
     BitMEXBot . lift $ makeRequest orderRequest
 
 updateIDs ::
-       (TVar OrderID, TVar OrderID)
+       (IORef OrderID, IORef OrderID)
     -> [(Text, Maybe Text)]
     -> IO ()
 updateIDs (sellID, buyID) =
@@ -145,11 +146,11 @@ updateIDs (sellID, buyID) =
         (\(id, side) ->
              case side of
                  Just "Buy" ->
-                     atomically $ writeTVar
+                     atomicWriteIORef
                          buyID
                          (OrderID (Just id))
                  Just "Sell" ->
-                     atomically $ writeTVar
+                     atomicWriteIORef
                          sellID
                          (OrderID (Just id))
                  Just _ -> return ()
@@ -169,10 +170,10 @@ placeBulkOrder orders orderSize ask bid = do
     osc <- R.asks openSellCost
     sellID' <- R.asks sellID
     buyID' <- R.asks buyID
-    buys' <- liftIO $ atomically $ readTVar obs
-    sells' <- liftIO $ atomically $ readTVar oss
-    openBC <- liftIO $ atomically $ readTVar obc
-    openSC <- liftIO $ atomically $ readTVar osc
+    buys' <- liftIO $ readIORef obs
+    sells' <- liftIO $ readIORef oss
+    openBC <- liftIO $ readIORef obc
+    openSC <- liftIO $ readIORef osc
     let orderTemplate@Mex.BitMEXRequest {..} =
             Mex.orderNewBulk
                 (Mex.ContentType Mex.MimeJSON)
@@ -204,9 +205,9 @@ placeBulkOrder orders orderSize ask bid = do
                              , o ^. Mex.orderSideL))
                         resOrders
             liftIO $ updateIDs ids ids'
-            liftIO $ atomically $ writeTVar obs $ buys' +
+            liftIO $ atomicWriteIORef obs $ buys' +
                 incrementQty orderSize (Just "Buy") pairs
-            liftIO $ atomically $ writeTVar obc $ openBC -
+            liftIO $ atomicWriteIORef obc $ openBC -
                 incrementQty
                     (floor $
                      convert
@@ -214,9 +215,9 @@ placeBulkOrder orders orderSize ask bid = do
                          (fromIntegral orderSize / bid))
                     (Just "Buy")
                     pairs
-            liftIO $ atomically $ writeTVar oss $ sells' +
+            liftIO $ atomicWriteIORef oss $ sells' +
                 incrementQty orderSize (Just "Sell") pairs
-            liftIO $ atomically $ writeTVar osc $ openSC -
+            liftIO $ atomicWriteIORef osc $ openSC -
                 incrementQty
                     (floor $
                      convert
@@ -248,7 +249,7 @@ amendOrder order = do
 
 amendLimitOrder ::
        OrderID
-    -> TVar OrderID
+    -> IORef OrderID
     -> Maybe Double
     -> BitMEXBot ()
 amendLimitOrder cid@(OrderID (Just _)) idRef price = do
@@ -270,13 +271,13 @@ amendLimitOrder cid@(OrderID (Just _)) idRef price = do
                      if errMsg == Just "Invalid ordStatus"
                          then do
                              liftIO $
-                                 atomically $ writeTVar
+                                 atomicWriteIORef
                                      idRef
                                      (OrderID Nothing)
                              oss <- R.asks openSells
                              obs <- R.asks openBuys
-                             liftIO $ atomically $ writeTVar oss 0
-                             liftIO $ atomically $ writeTVar obs 0
+                             liftIO $ atomicWriteIORef oss 0
+                             liftIO $ atomicWriteIORef obs 0
                              return ()
                          else kill
                                   "amending limit order failed"
@@ -401,14 +402,14 @@ cancelLimitOrders side = do
                  then do
                      openBuys <- R.asks openBuys
                      openBuyCost <- R.asks openBuyCost
-                     liftIO $ atomically $ writeTVar openBuys 0
-                     liftIO $ atomically $ writeTVar openBuyCost 0
+                     liftIO $ atomicWriteIORef openBuys 0
+                     liftIO $ atomicWriteIORef openBuyCost 0
                  else do
                      openSells <- R.asks openSells
                      openSellCost <- R.asks openSellCost
-                     liftIO $ atomically $ writeTVar openSells 0
+                     liftIO $ atomicWriteIORef openSells 0
                      liftIO $
-                         atomically $ writeTVar openSellCost 0
+                         atomicWriteIORef openSellCost 0
         else if code == 400
                  then do
                      let err =
@@ -423,7 +424,7 @@ cancelLimitOrders side = do
 
 kill :: String -> BitMEXBot ()
 kill msg = do
-    pSize <- R.asks positionSize >>= (liftIO . atomically . readTVar)
+    pSize <- R.asks positionSize >>= (liftIO . readIORef)
     restart
     let close =
             if pSize < 0
@@ -443,12 +444,12 @@ restart = do
                  (Mex.Accept Mex.MimeJSON))
     liftIO $ do
         atomically $ writeTVar stopOrderId (OrderID Nothing)
-        atomically $ writeTVar positionSize 0
+        atomicWriteIORef positionSize 0
         atomically $ writeTVar prevPosition None
-        atomically $ writeTVar openBuys 0
-        atomically $ writeTVar openBuyCost 0
-        atomically $ writeTVar openSells 0
-        atomically $ writeTVar openSellCost 0
+        atomicWriteIORef openBuys 0
+        atomicWriteIORef openBuyCost 0
+        atomicWriteIORef openSells 0
+        atomicWriteIORef openSellCost 0
 
 -------------------------------------------------------------
 -- POSITION
@@ -507,9 +508,9 @@ makeMarket ::
     -> BitMEXBot ()
 makeMarket action limit orderSize ask bid = do
     BotState {..} <- R.ask
-    size <- liftIO $ atomically $ readTVar positionSize
-    buys' <- liftIO $ atomically $ readTVar openBuys
-    sells' <- liftIO $ atomically $ readTVar openSells
+    size <- liftIO $ readIORef positionSize
+    buys' <- liftIO $ readIORef openBuys
+    sells' <- liftIO $ readIORef openSells
     let buys =
             if size > 0
                 then size + buys'

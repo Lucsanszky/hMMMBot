@@ -31,6 +31,7 @@ import           Bot.Util
     )
 import           Control.Concurrent.STM.TVar (readTVar)
 import           Control.Monad.STM           (atomically)
+import           Data.IORef                  (readIORef)
 import qualified Data.Vector                 as V
     ( filter
     , head
@@ -53,13 +54,13 @@ trader vectorOBL2 botState@BotState {..} config = do
             V.filter
                 (\x -> side (x :: RespOrderBookL2) == Sell)
                 vectorOBL2
-    bestAsk' <- atomically $ readTVar bestAsk
-    bestBid' <- atomically $ readTVar bestBid
-    sellQty <- atomically $ readTVar openSells
-    buyQty <- atomically $ readTVar openBuys
-    posSize <- atomically $ readTVar positionSize
-    buyID' <- atomically $ readTVar buyID
-    sellID' <- atomically $ readTVar sellID
+    bestAsk' <- readIORef bestAsk
+    bestBid' <- readIORef bestBid
+    sellQty <- readIORef openSells
+    buyQty <- readIORef openBuys
+    posSize <- readIORef positionSize
+    buyID' <- readIORef buyID
+    sellID' <- readIORef sellID
     total <- atomically $ readTVar walletBalance
     available <-
         liftIO $ atomically $ readTVar availableBalance

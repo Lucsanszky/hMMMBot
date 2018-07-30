@@ -35,6 +35,9 @@ import           Control.Concurrent.STM.TVar
     )
 import           Control.Monad.STM              (atomically)
 import           Control.Monad.STM              (STM, retry)
+import           Data.IORef
+    ( atomicWriteIORef
+    )
 import           Data.Maybe                     (fromJust)
 import qualified Data.Vector                    as V
     ( head
@@ -54,8 +57,8 @@ processResponse (Just (OB TABLE { _action = Delete
 processResponse (Just (OB10 TABLE {_data = orderBookData})) BotState {..} _ = do
     let RespOrderBook10 {asks = newAsks, bids = newBids} =
             V.head orderBookData
-    atomically $ writeTVar bestAsk $ V.head $ V.head newAsks
-    atomically $ writeTVar bestBid $ V.head $ V.head newBids
+    atomicWriteIORef bestAsk $ V.head $ V.head newAsks
+    atomicWriteIORef bestBid $ V.head $ V.head newBids
 processResponse (Just posResp@(P TABLE {_data = positionData})) BotState {..} _ = do
     let RespPosition { currentQty = currQty
                      , openOrderBuyQty = buyQty
@@ -65,15 +68,15 @@ processResponse (Just posResp@(P TABLE {_data = positionData})) BotState {..} _ 
                      } = V.head positionData
     when (isJust currQty) $ do
         let q = fromJust $ map floor currQty
-        atomically $ writeTVar positionSize q
+        atomicWriteIORef positionSize q
         atomically $
             writeTBQueue
                 (unRiskManagerQueue riskManagerQueue)
                 (Just posResp)
-    atomically $ forM_ buyQty $ writeTVar openBuys
-    atomically $ forM_ buyCost $ writeTVar openBuyCost
-    atomically $ forM_ sellQty $ writeTVar openSells
-    atomically $ forM_ sellCost $ writeTVar openSellCost
+    forM_ buyQty $ atomicWriteIORef openBuys
+    forM_ buyCost $ atomicWriteIORef openBuyCost
+    forM_ sellQty $ atomicWriteIORef openSells
+    forM_ sellCost $ atomicWriteIORef openSellCost
 processResponse (Just (M TABLE {_data = marginData})) BotState {..} _ = do
     let RespMargin { realisedPnl = rpnl
                    , availableMargin = ab

@@ -66,6 +66,7 @@ import           Data.Aeson
     , toJSON
     )
 import           Data.ByteString.Char8          (pack)
+import           Data.IORef                     (newIORef)
 import           Data.Time.Clock.POSIX
     ( getPOSIXTime
     )
@@ -106,21 +107,21 @@ initBot leverage conn = do
     slwQueue <- liftIO $ atomically $ newTBQueue 1
     pnlQueue <- liftIO $ atomically $ newTBQueue 1
     prevPosition <- liftIO $ atomically $ newTVar None
-    positionSize <- liftIO $ atomically $ newTVar 0
+    positionSize <- liftIO $ newIORef 0
     realPnl <- liftIO $ atomically $ newTVar 0
     prevBalance <- liftIO $ atomically $ newTVar $ floor wb
     availableBalance <-
         liftIO $ atomically $ newTVar $ floor ab
     walletBalance <-
         liftIO $ atomically $ newTVar $ floor wb
-    openBuys <- liftIO $ atomically $ newTVar 0
-    openBuyCost <- liftIO $ atomically $ newTVar 0
-    openSells <- liftIO $ atomically $ newTVar 0
-    openSellCost <- liftIO $ atomically $ newTVar 0
-    bestBid <- liftIO $ atomically $ newTVar 0.0
-    bestAsk <- liftIO $ atomically $ newTVar 99999999999.0
-    sellID <- liftIO $ atomically $ newTVar (OrderID Nothing)
-    buyID <- liftIO $ atomically $ newTVar (OrderID Nothing)
+    openBuys <- liftIO $ newIORef 0
+    openBuyCost <- liftIO $ newIORef 0
+    openSells <- liftIO $ newIORef 0
+    openSellCost <- liftIO $ newIORef 0
+    bestBid <- liftIO $ newIORef 0.0
+    bestAsk <- liftIO $ newIORef 99999999999.0
+    sellID <- liftIO $ newIORef (OrderID Nothing)
+    buyID <- liftIO $ newIORef (OrderID Nothing)
     stopOrderId <-
         liftIO $ atomically $ newTVar (OrderID Nothing)
     let botState =

@@ -28,6 +28,7 @@ import           Control.Monad.Reader
     ( MonadReader
     , ReaderT
     )
+import           Data.IORef                     (IORef)
 import           Network.WebSockets             (Connection)
 
 newtype StopPx =
@@ -87,16 +88,16 @@ data BotState = BotState
     , prevBalance      :: !(TVar Integer)
     , availableBalance :: !(TVar Integer)
     , walletBalance    :: !(TVar Integer)
-    , bestAsk          :: !(TVar Double)
-    , bestBid          :: !(TVar Double)
+    , bestAsk          :: !(IORef Double)
+    , bestBid          :: !(IORef Double)
     , prevPosition     :: !(TVar PositionType)
-    , positionSize     :: !(TVar Integer)
-    , openBuys         :: !(TVar Integer)
-    , openSells        :: !(TVar Integer)
-    , openBuyCost      :: !(TVar Integer)
-    , openSellCost     :: !(TVar Integer)
-    , buyID            :: !(TVar OrderID)
-    , sellID           :: !(TVar OrderID)
+    , positionSize     :: !(IORef Integer)
+    , openBuys         :: !(IORef Integer)
+    , openSells        :: !(IORef Integer)
+    , openBuyCost      :: !(IORef Integer)
+    , openSellCost     :: !(IORef Integer)
+    , buyID            :: !(IORef OrderID)
+    , sellID           :: !(IORef OrderID)
     , stopOrderId      :: !(TVar OrderID)
     , leverage         :: !Mex.Leverage
     }
