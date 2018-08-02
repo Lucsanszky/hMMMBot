@@ -46,20 +46,63 @@ extra-source-files:  ChangeLog.md
 cabal-version:       >=1.10
 
 
+library
+  exposed-modules: Bot.Util
+                   Bot.Concurrent
+                   Bot.Math
+                   Bot.Trader
+                   Bot.Types
+                   Bot.RiskManager
+                   Bot.OrderTemplates
+                   Bot.Logging
+
+  hs-source-dirs:      src
+
+  build-depends:       base >=4.10 && <4.11
+                     , haskell-bitmex-rest
+                     , haskell-bitmex-client
+                     , basic-prelude
+                     , bytestring >= 0.10
+                     , bloodhound
+                     , async
+                     , microlens >= 0.4
+                     , katip-elasticsearch
+                     , katip
+                     , containers >= 0.5
+                     , unordered-containers >= 0.2
+                     , websockets >= 0.12
+                     , http-client >=0.5 && <0.6
+                     , http-types >= 0.10
+                     , aeson >= 1.2
+                     , http-client-tls >= 0.3
+                     , mtl >= 2.2
+                     , time
+                     , text
+                     , vector >= 0.12
+                     , stm
+
+  ghc-options: -Wall
+               -O2
+               -funbox-strict-fields
+               -fwarn-unused-imports
+               -Wcompat
+               -Wincomplete-record-updates
+               -Wincomplete-uni-patterns
+               -Wredundant-constraints
+
+  default-extensions:  GeneralizedNewtypeDeriving
+                       MultiParamTypeClasses
+                       NoImplicitPrelude
+                       OverloadedStrings
+                       RecordWildCards
+
 executable hMMMBot
   -- .hs or .lhs file containing the Main module.
   main-is:             Main.hs
 
   -- Modules included in this executable, other than Main.
+
   other-modules: Bot
-                 Bot.Concurrent
-                 Bot.Util
-                 Bot.Math
-                 Bot.Trader
-                 Bot.Types
-                 Bot.RiskManager
-                 Bot.OrderTemplates
-                 Bot.Logging
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
@@ -80,6 +123,7 @@ executable hMMMBot
   build-depends:       base >=4.10 && <4.11
                      , haskell-bitmex-rest
                      , haskell-bitmex-client
+                     , hMMMBot
                      , basic-prelude
                      , bytestring >= 0.10
                      , bloodhound >= 0.15 && < 0.16
@@ -111,5 +155,34 @@ executable hMMMBot
   default-extensions:  GeneralizedNewtypeDeriving
                        MultiParamTypeClasses
                        NoImplicitPrelude
+                       OverloadedStrings
+                       RecordWildCards
+
+benchmark bench-bot
+  type: exitcode-stdio-1.0
+  hs-source-dirs:      benchmarks
+  main-is:             Benchmark.hs
+  build-depends:       base >=4.10 && <4.11
+                     , haskell-bitmex-rest
+                     , haskell-bitmex-client
+                     , criterion
+                     , hMMMBot
+                     , basic-prelude
+                     , bytestring >= 0.10
+                     , async
+                     , containers >= 0.5
+                     , unordered-containers >= 0.2
+                     , websockets >= 0.12
+                     , http-client >=0.5 && <0.6
+                     , http-types >= 0.10
+                     , aeson >= 1.2
+                     , http-client-tls >= 0.3
+                     , mtl >= 2.2
+                     , time
+                     , text
+                     , vector >= 0.12
+                     , stm
+
+  default-extensions:  NoImplicitPrelude
                        OverloadedStrings
                        RecordWildCards
