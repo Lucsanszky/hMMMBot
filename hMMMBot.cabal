@@ -63,11 +63,11 @@ library
                      , haskell-bitmex-client
                      , basic-prelude
                      , bytestring >= 0.10
-                     , bloodhound
+                     , bloodhound >= 0.15 && < 0.16
                      , async
                      , microlens >= 0.4
-                     , katip-elasticsearch
-                     , katip
+                     , katip-elasticsearch >= 0.4 && < 0.5
+                     , katip >=0.4 && < 0.6
                      , containers >= 0.5
                      , unordered-containers >= 0.2
                      , websockets >= 0.12
@@ -126,14 +126,7 @@ executable hMMMBot
                      , hMMMBot
                      , basic-prelude
                      , bytestring >= 0.10
-                     , bloodhound >= 0.15 && < 0.16
                      , async
-                     , microlens >= 0.4
-                     , network >= 2.6
-                     , katip-elasticsearch >= 0.4 && < 0.5
-                     , katip >=0.4 && < 0.6
-                     , containers >= 0.5
-                     , unordered-containers >= 0.2
                      , websockets >= 0.12
                      , http-client >=0.5 && <0.6
                      , http-types >= 0.10
@@ -170,8 +163,6 @@ benchmark bench-bot
                      , basic-prelude
                      , bytestring >= 0.10
                      , async
-                     , containers >= 0.5
-                     , unordered-containers >= 0.2
                      , websockets >= 0.12
                      , http-client >=0.5 && <0.6
                      , http-types >= 0.10
