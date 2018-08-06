@@ -172,16 +172,6 @@ initBot leverage conn = do
                     forever $ do
                         msg <- getMessage c config
                         processResponse msg botState config
-                _ <-
-                    async $
-                    forever $ do
-                        eres <- waitCatch processor
-                        case eres of
-                            Right _ -> return ()
-                            Left _ ->
-                                connect
-                                    config
-                                    (initBot leverage)
                 sendMessage
                     c
                     AuthKey
@@ -202,16 +192,6 @@ initBot leverage conn = do
                     forever $ do
                         msg <- getMessage c config
                         processResponse msg botState config
-                _ <-
-                    async $
-                    forever $ do
-                        eres <- waitCatch processor
-                        case eres of
-                            Right _ -> return ()
-                            Left _ ->
-                                connect
-                                    config
-                                    (initBot leverage)
                 sendMessage
                     c
                     AuthKey
@@ -232,16 +212,6 @@ initBot leverage conn = do
                     forever $ do
                         msg <- getMessage c config
                         processResponse msg botState config
-                _ <-
-                    async $
-                    forever $ do
-                        eres <- waitCatch processor
-                        case eres of
-                            Right _ -> return ()
-                            Left _ ->
-                                connect
-                                    config
-                                    (initBot leverage)
                 sendMessage
                     c
                     AuthKey
@@ -262,16 +232,6 @@ initBot leverage conn = do
                     forever $ do
                         msg <- getMessage c config
                         processResponse msg botState config
-                _ <-
-                    async $
-                    forever $ do
-                        eres <- waitCatch processor
-                        case eres of
-                            Right _ -> return ()
-                            Left _ ->
-                                connect
-                                    config
-                                    (initBot leverage)
                 sendMessage
                     c
                     AuthKey
