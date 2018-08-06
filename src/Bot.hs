@@ -66,9 +66,18 @@ import           Data.Aeson
     , toJSON
     )
 import           Data.ByteString.Char8          (pack)
+import qualified Data.ByteString.Lazy.Char8     as LBC
+    ( unpack
+    )
 import           Data.IORef                     (newIORef)
 import           Data.Time.Clock.POSIX
     ( getPOSIXTime
+    )
+import           Network.Socket
+    ( withSocketsDo
+    )
+import           Wuss
+    ( runSecureClient
     )
 
 
@@ -93,8 +102,8 @@ tradeLoop = do
 
 initBot :: Mex.Leverage -> BitMEXApp ()
 initBot leverage conn = do
-    config <- R.ask
-    pub <- R.asks publicKey
+    config@BitMEXWrapperConfig {..} <- R.ask
+    -- pub <- R.asks publicKey
     time <- liftIO $ makeTimestamp <$> getPOSIXTime
     sig <- sign (pack ("GET" ++ "/realtime" ++ show time))
     Mex.MimeResult {Mex.mimeResult = res} <-
@@ -148,8 +157,119 @@ initBot leverage conn = do
             , stopOrderId = stopOrderId
             , leverage = leverage
             }
+        base = (drop 8 . show) environment
+        path = case pathWS of
+            Nothing -> "/realtime"
+            Just x  -> x
     _ <- updateLeverage XBTUSD leverage
     liftIO $ do
+        withSocketsDo $
+            runSecureClient base 443 (LBC.unpack path) $ \c -> do
+                processor <-
+                    async $
+                    forever $ do
+                        msg <- getMessage c config
+                        processResponse
+                            msg
+                            botState
+                            config
+                _ <- async $ forever $ do
+                        eres <- waitCatch processor
+                        case eres of
+                            Right _ -> return ()
+                            Left _  -> connect config (initBot leverage)
+
+                sendMessage
+                    c
+                    AuthKey
+                    [String publicKey, toJSON time, (toJSON . show) sig]
+                sendMessage
+                    c
+                    Subscribe
+                    ([ OrderBook10 XBTUSD
+                    ] :: [Topic Symbol])
+
+        withSocketsDo $
+            runSecureClient base 443 (LBC.unpack path) $ \c -> do
+                processor <-
+                    async $
+                    forever $ do
+                        msg <- getMessage c config
+                        processResponse
+                            msg
+                            botState
+                            config
+                _ <- async $ forever $ do
+                        eres <- waitCatch processor
+                        case eres of
+                            Right _ -> return ()
+                            Left _  -> connect config (initBot leverage)
+
+                sendMessage
+                    c
+                    AuthKey
+                    [String publicKey, toJSON time, (toJSON . show) sig]
+                sendMessage
+                    c
+                    Subscribe
+                    ([
+                    OrderBookL2 XBTUSD
+                    ] :: [Topic Symbol])
+
+        withSocketsDo $
+
+            runSecureClient base 443 (LBC.unpack path) $ \c -> do
+                processor <-
+                    async $
+                    forever $ do
+                        msg <- getMessage c config
+                        processResponse
+                            msg
+                            botState
+                            config
+                _ <- async $ forever $ do
+                        eres <- waitCatch processor
+                        case eres of
+                            Right _ -> return ()
+                            Left _  -> connect config (initBot leverage)
+                sendMessage
+                    c
+                    AuthKey
+                    [String publicKey, toJSON time, (toJSON . show) sig]
+                sendMessage
+                    c
+                    Subscribe
+                    ([
+                     Execution
+                    ] :: [Topic Symbol])
+
+        withSocketsDo $
+            runSecureClient base 443 (LBC.unpack path) $ \c -> do
+                processor <-
+                    async $
+                    forever $ do
+                        msg <- getMessage c config
+                        processResponse
+                            msg
+                            botState
+                            config
+                _ <- async $ forever $ do
+                        eres <- waitCatch processor
+                        case eres of
+                            Right _ -> return ()
+                            Left _  -> connect config (initBot leverage)
+
+                sendMessage
+                    c
+                    AuthKey
+                    [String publicKey, toJSON time, (toJSON . show) sig]
+                sendMessage
+                    c
+                    Subscribe
+                    ([
+                     Position
+                    ] :: [Topic Symbol])
+
         processor <-
             async $
             forever $ do
@@ -166,14 +286,11 @@ initBot leverage conn = do
         sendMessage
             conn
             AuthKey
-            [String pub, toJSON time, (toJSON . show) sig]
+            [String publicKey, toJSON time, (toJSON . show) sig]
         sendMessage
             conn
             Subscribe
-            ([ OrderBook10 XBTUSD
-             , OrderBookL2 XBTUSD
-             , Execution
-             , Position
-             , Margin
+            ([
+              Margin
              ] :: [Topic Symbol])
     R.runReaderT (runBot tradeLoop) botState
