@@ -82,12 +82,12 @@ executable hMMMBot
                      , haskell-bitmex-client
                      , basic-prelude
                      , bytestring >= 0.10
-                     , bloodhound
+                     , bloodhound >= 0.15 && < 0.16
                      , async
                      , microlens >= 0.4
-                     , katip-elasticsearch
                      , network >= 2.6
-                     , katip
+                     , katip-elasticsearch >= 0.4 && < 0.5
+                     , katip >=0.4 && < 0.6
                      , containers >= 0.5
                      , unordered-containers >= 0.2
                      , websockets >= 0.12
