@@ -161,11 +161,18 @@ initBot leverage = do
                 Just x  -> x
     _ <- updateLeverage XBTUSD leverage
     ob10 <-
-        liftIO $ async $
+        liftIO $
+        async $
         withSocketsDo $
         runSecureClient base 443 (LBC.unpack path) $ \c -> do
             time <- makeTimestamp <$> getPOSIXTime
-            sig <- R.runReaderT (run (sign (pack ("GET" ++ "/realtime" ++ show time)))) config
+            sig <-
+                R.runReaderT
+                    (run (sign
+                              (pack
+                                   ("GET" ++
+                                    "/realtime" ++ show time))))
+                    config
             sendMessage
                 c
                 AuthKey
@@ -181,12 +188,18 @@ initBot leverage = do
                 msg <- getMessage c config
                 processResponse msg botState config
     obl2 <-
-        liftIO $ async $
+        liftIO $
+        async $
         withSocketsDo $
         runSecureClient base 443 (LBC.unpack path) $ \c -> do
             time <- makeTimestamp <$> getPOSIXTime
-            sig <- R.runReaderT (run (sign (pack ("GET" ++ "/realtime" ++ show time)))) config
-
+            sig <-
+                R.runReaderT
+                    (run (sign
+                              (pack
+                                   ("GET" ++
+                                    "/realtime" ++ show time))))
+                    config
             sendMessage
                 c
                 AuthKey
@@ -201,14 +214,19 @@ initBot leverage = do
             forever $ do
                 msg <- getMessage c config
                 processResponse msg botState config
-
-    exec <-
-        liftIO $ async $
+    misc <-
+        liftIO $
+        async $
         withSocketsDo $
         runSecureClient base 443 (LBC.unpack path) $ \c -> do
             time <- makeTimestamp <$> getPOSIXTime
-            sig <- R.runReaderT (run (sign (pack ("GET" ++ "/realtime" ++ show time)))) config
-
+            sig <-
+                R.runReaderT
+                    (run (sign
+                              (pack
+                                   ("GET" ++
+                                    "/realtime" ++ show time))))
+                    config
             sendMessage
                 c
                 AuthKey
@@ -219,51 +237,7 @@ initBot leverage = do
             sendMessage
                 c
                 Subscribe
-                ([Execution] :: [Topic Symbol])
-            forever $ do
-                msg <- getMessage c config
-                processResponse msg botState config
-
-    pos <-
-        liftIO $ async $
-        withSocketsDo $
-        runSecureClient base 443 (LBC.unpack path) $ \c -> do
-            time <- makeTimestamp <$> getPOSIXTime
-            sig <- R.runReaderT (run (sign (pack ("GET" ++ "/realtime" ++ show time)))) config
-
-            sendMessage
-                c
-                AuthKey
-                [ String publicKey
-                , toJSON time
-                , (toJSON . show) sig
-                ]
-            sendMessage
-                c
-                Subscribe
-                ([Position] :: [Topic Symbol])
-            forever $ do
-                msg <- getMessage c config
-                processResponse msg botState config
-
-    mar <-
-        liftIO $ async $
-        withSocketsDo $
-        runSecureClient base 443 (LBC.unpack path) $ \c -> do
-            time <- makeTimestamp <$> getPOSIXTime
-            sig <- R.runReaderT (run (sign (pack ("GET" ++ "/realtime" ++ show time)))) config
-
-            sendMessage
-                c
-                AuthKey
-                [ String publicKey
-                , toJSON time
-                , (toJSON . show) sig
-                ]
-            sendMessage
-                c
-                Subscribe
-                ([Margin] :: [Topic Symbol])
+                ([Execution, Position, Margin] :: [Topic Symbol])
             forever $ do
                 msg <- getMessage c config
                 processResponse msg botState config
