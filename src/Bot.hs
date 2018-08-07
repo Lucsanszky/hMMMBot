@@ -15,7 +15,7 @@ import qualified BitMEX                         as Mex
     )
 import           BitMEXClient
     ( BitMEXApp
-    , BitMEXReader
+    , BitMEXReader (..)
     , BitMEXWrapperConfig (..)
     , Command (..)
     , Symbol (..)
@@ -104,8 +104,6 @@ initBot :: Mex.Leverage -> BitMEXReader ()
 initBot leverage = do
     config@BitMEXWrapperConfig {..} <- R.ask
     -- pub <- R.asks publicKey
-    time <- liftIO $ makeTimestamp <$> getPOSIXTime
-    sig <- sign (pack ("GET" ++ "/realtime" ++ show time))
     Mex.MimeResult {Mex.mimeResult = res} <-
         makeRequest $
         Mex.userGetMargin (Mex.Accept Mex.MimeJSON)
@@ -162,100 +160,112 @@ initBot leverage = do
                 Nothing -> "/realtime"
                 Just x  -> x
     _ <- updateLeverage XBTUSD leverage
-    liftIO $ do
+    ob10 <-
+        liftIO $ async $
         withSocketsDo $
-            runSecureClient base 443 (LBC.unpack path) $ \c -> do
-                processor <-
-                    async $
-                    forever $ do
-                        msg <- getMessage c config
-                        processResponse msg botState config
-                A.link processor
-                sendMessage
-                    c
-                    AuthKey
-                    [ String publicKey
-                    , toJSON time
-                    , (toJSON . show) sig
-                    ]
-                sendMessage
-                    c
-                    Subscribe
-                    ([OrderBook10 XBTUSD] :: [Topic Symbol])
+        runSecureClient base 443 (LBC.unpack path) $ \c -> do
+            time <- makeTimestamp <$> getPOSIXTime
+            sig <- R.runReaderT (run (sign (pack ("GET" ++ "/realtime" ++ show time)))) config
+            sendMessage
+                c
+                AuthKey
+                [ String publicKey
+                , toJSON time
+                , (toJSON . show) sig
+                ]
+            sendMessage
+                c
+                Subscribe
+                ([OrderBook10 XBTUSD] :: [Topic Symbol])
+            forever $ do
+                msg <- getMessage c config
+                processResponse msg botState config
+    obl2 <-
+        liftIO $ async $
         withSocketsDo $
-            runSecureClient base 443 (LBC.unpack path) $ \c -> do
-                processor <-
-                    async $
-                    forever $ do
-                        msg <- getMessage c config
-                        processResponse msg botState config
-                A.link processor
-                sendMessage
-                    c
-                    AuthKey
-                    [ String publicKey
-                    , toJSON time
-                    , (toJSON . show) sig
-                    ]
-                sendMessage
-                    c
-                    Subscribe
-                    ([OrderBookL2 XBTUSD] :: [Topic Symbol])
+        runSecureClient base 443 (LBC.unpack path) $ \c -> do
+            time <- makeTimestamp <$> getPOSIXTime
+            sig <- R.runReaderT (run (sign (pack ("GET" ++ "/realtime" ++ show time)))) config
+
+            sendMessage
+                c
+                AuthKey
+                [ String publicKey
+                , toJSON time
+                , (toJSON . show) sig
+                ]
+            sendMessage
+                c
+                Subscribe
+                ([OrderBookL2 XBTUSD] :: [Topic Symbol])
+            forever $ do
+                msg <- getMessage c config
+                processResponse msg botState config
+
+    exec <-
+        liftIO $ async $
         withSocketsDo $
-            runSecureClient base 443 (LBC.unpack path) $ \c -> do
-                processor <-
-                    async $
-                    forever $ do
-                        msg <- getMessage c config
-                        processResponse msg botState config
-                A.link processor
-                sendMessage
-                    c
-                    AuthKey
-                    [ String publicKey
-                    , toJSON time
-                    , (toJSON . show) sig
-                    ]
-                sendMessage
-                    c
-                    Subscribe
-                    ([Execution] :: [Topic Symbol])
+        runSecureClient base 443 (LBC.unpack path) $ \c -> do
+            time <- makeTimestamp <$> getPOSIXTime
+            sig <- R.runReaderT (run (sign (pack ("GET" ++ "/realtime" ++ show time)))) config
+
+            sendMessage
+                c
+                AuthKey
+                [ String publicKey
+                , toJSON time
+                , (toJSON . show) sig
+                ]
+            sendMessage
+                c
+                Subscribe
+                ([Execution] :: [Topic Symbol])
+            forever $ do
+                msg <- getMessage c config
+                processResponse msg botState config
+
+    pos <-
+        liftIO $ async $
         withSocketsDo $
-            runSecureClient base 443 (LBC.unpack path) $ \c -> do
-                processor <-
-                    async $
-                    forever $ do
-                        msg <- getMessage c config
-                        processResponse msg botState config
-                A.link processor
-                sendMessage
-                    c
-                    AuthKey
-                    [ String publicKey
-                    , toJSON time
-                    , (toJSON . show) sig
-                    ]
-                sendMessage
-                    c
-                    Subscribe
-                    ([Position] :: [Topic Symbol])
+        runSecureClient base 443 (LBC.unpack path) $ \c -> do
+            time <- makeTimestamp <$> getPOSIXTime
+            sig <- R.runReaderT (run (sign (pack ("GET" ++ "/realtime" ++ show time)))) config
+
+            sendMessage
+                c
+                AuthKey
+                [ String publicKey
+                , toJSON time
+                , (toJSON . show) sig
+                ]
+            sendMessage
+                c
+                Subscribe
+                ([Position] :: [Topic Symbol])
+            forever $ do
+                msg <- getMessage c config
+                processResponse msg botState config
+
+    mar <-
+        liftIO $ async $
         withSocketsDo $
-            runSecureClient base 443 (LBC.unpack path) $ \c -> do
-                processor <-
-                    async $
-                    forever $ do
-                        msg <- getMessage c config
-                        processResponse msg botState config
-                A.link processor
-                sendMessage
-                    c
-                    AuthKey
-                    [ String publicKey
-                    , toJSON time
-                    , (toJSON . show) sig
-                    ]
-                sendMessage
-                    c
-                    Subscribe
-                    ([Margin] :: [Topic Symbol])
+        runSecureClient base 443 (LBC.unpack path) $ \c -> do
+            time <- makeTimestamp <$> getPOSIXTime
+            sig <- R.runReaderT (run (sign (pack ("GET" ++ "/realtime" ++ show time)))) config
+
+            sendMessage
+                c
+                AuthKey
+                [ String publicKey
+                , toJSON time
+                , (toJSON . show) sig
+                ]
+            sendMessage
+                c
+                Subscribe
+                ([Margin] :: [Topic Symbol])
+            forever $ do
+                msg <- getMessage c config
+                processResponse msg botState config
+    liftIO $ mapM_ A.link [ob10, obl2, exec, pos, mar]
     R.runReaderT (runBot tradeLoop) botState
