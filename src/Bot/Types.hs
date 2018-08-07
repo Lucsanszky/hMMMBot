@@ -80,8 +80,8 @@ data Rule
     | XBT_to_USD
 
 data BotState = BotState
-    { connection       :: !Connection
-    , riskManagerQueue :: !RiskManagerQueue
+    {
+     riskManagerQueue  :: !RiskManagerQueue
     , slwQueue         :: !StopLossWatcherQueue
     , pnlQueue         :: !PnLQueue
     , realPnl          :: !(TVar Integer)

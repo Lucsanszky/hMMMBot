@@ -15,6 +15,7 @@ import qualified BitMEX                         as Mex
     )
 import           BitMEXClient
     ( BitMEXApp
+    , BitMEXReader
     , BitMEXWrapperConfig (..)
     , Command (..)
     , Symbol (..)
@@ -99,8 +100,8 @@ tradeLoop = do
   where
     loop = loop
 
-initBot :: Mex.Leverage -> BitMEXApp ()
-initBot leverage conn = do
+initBot :: Mex.Leverage -> BitMEXReader ()
+initBot leverage = do
     config@BitMEXWrapperConfig {..} <- R.ask
     -- pub <- R.asks publicKey
     time <- liftIO $ makeTimestamp <$> getPOSIXTime
@@ -134,8 +135,7 @@ initBot leverage conn = do
         liftIO $ atomically $ newTVar (OrderID Nothing)
     let botState =
             BotState
-            { connection = conn
-            , riskManagerQueue =
+            { riskManagerQueue =
                   RiskManagerQueue riskManagerQueue
             , slwQueue = StopLossWatcherQueue slwQueue
             , pnlQueue = PnLQueue pnlQueue
@@ -163,15 +163,14 @@ initBot leverage conn = do
                 Just x  -> x
     _ <- updateLeverage XBTUSD leverage
     liftIO $ do
-        _ <-
-            async $
-            withSocketsDo $
+        withSocketsDo $
             runSecureClient base 443 (LBC.unpack path) $ \c -> do
                 processor <-
                     async $
                     forever $ do
                         msg <- getMessage c config
                         processResponse msg botState config
+                A.link processor
                 sendMessage
                     c
                     AuthKey
@@ -183,15 +182,14 @@ initBot leverage conn = do
                     c
                     Subscribe
                     ([OrderBook10 XBTUSD] :: [Topic Symbol])
-        _ <-
-            async $
-            withSocketsDo $
+        withSocketsDo $
             runSecureClient base 443 (LBC.unpack path) $ \c -> do
                 processor <-
                     async $
                     forever $ do
                         msg <- getMessage c config
                         processResponse msg botState config
+                A.link processor
                 sendMessage
                     c
                     AuthKey
@@ -203,15 +201,14 @@ initBot leverage conn = do
                     c
                     Subscribe
                     ([OrderBookL2 XBTUSD] :: [Topic Symbol])
-        _ <-
-            async $
-            withSocketsDo $
+        withSocketsDo $
             runSecureClient base 443 (LBC.unpack path) $ \c -> do
                 processor <-
                     async $
                     forever $ do
                         msg <- getMessage c config
                         processResponse msg botState config
+                A.link processor
                 sendMessage
                     c
                     AuthKey
@@ -223,15 +220,14 @@ initBot leverage conn = do
                     c
                     Subscribe
                     ([Execution] :: [Topic Symbol])
-        _ <-
-            async $
-            withSocketsDo $
+        withSocketsDo $
             runSecureClient base 443 (LBC.unpack path) $ \c -> do
                 processor <-
                     async $
                     forever $ do
                         msg <- getMessage c config
                         processResponse msg botState config
+                A.link processor
                 sendMessage
                     c
                     AuthKey
@@ -243,28 +239,23 @@ initBot leverage conn = do
                     c
                     Subscribe
                     ([Position] :: [Topic Symbol])
-        processor <-
-            async $
-            forever $ do
-                msg <- getMessage conn config
-                processResponse msg botState config
-        _ <-
-            async $
-            forever $ do
-                eres <- waitCatch processor
-                case eres of
-                    Right _ -> return ()
-                    Left _ ->
-                        connect config (initBot leverage)
-        sendMessage
-            conn
-            AuthKey
-            [ String publicKey
-            , toJSON time
-            , (toJSON . show) sig
-            ]
-        sendMessage
-            conn
-            Subscribe
-            ([Margin] :: [Topic Symbol])
+        withSocketsDo $
+            runSecureClient base 443 (LBC.unpack path) $ \c -> do
+                processor <-
+                    async $
+                    forever $ do
+                        msg <- getMessage c config
+                        processResponse msg botState config
+                A.link processor
+                sendMessage
+                    c
+                    AuthKey
+                    [ String publicKey
+                    , toJSON time
+                    , (toJSON . show) sig
+                    ]
+                sendMessage
+                    c
+                    Subscribe
+                    ([Margin] :: [Topic Symbol])
     R.runReaderT (runBot tradeLoop) botState

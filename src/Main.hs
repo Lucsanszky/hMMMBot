@@ -6,7 +6,8 @@ import qualified BitMEX                  as Mex
     , runDefaultLogExecWithContext
     )
 import           BitMEXClient
-    ( BitMEXWrapperConfig (..)
+    ( BitMEXReader (..)
+    , BitMEXWrapperConfig (..)
     , Environment (..)
     , connect
     )
@@ -15,6 +16,7 @@ import           Bot.Logging
     ( esLoggingContext
     , initEsLogContext
     )
+import qualified Control.Monad.Reader    as R (runReaderT)
 import qualified Data.ByteString         as B (readFile)
 import           Data.Text               as T (pack)
 import           Network.HTTP.Client     (newManager)
@@ -45,8 +47,7 @@ main = do
                   Mex.runDefaultLogExecWithContext
             , logContext = logCxt
             }
-    connect
-        config
-        (initBot
+    R.runReaderT
+        (run (initBot
              (Mex.Leverage
-                  (read (T.pack leverage) :: Double)))
+                  (read (T.pack leverage) :: Double)))) config
