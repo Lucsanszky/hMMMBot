@@ -50,6 +50,7 @@ import           Bot.Util
     )
 import           Control.Concurrent.Async
     ( async
+    , waitAnyCatch
     , waitCatch
     )
 import qualified Control.Concurrent.Async       as A (link)
@@ -241,5 +242,12 @@ initBot leverage = do
             forever $ do
                 msg <- getMessage c config
                 processResponse msg botState config
-    liftIO $ mapM_ A.link [ob10, obl2, exec, pos, mar]
+    _ <-
+        liftIO $ async $
+        forever $ do
+            eres <- waitAnyCatch [ob10, obl2, misc]
+            case eres of
+                (_, Right _) -> return ()
+                (_, Left _)-> R.runReaderT
+                    (run (initBot leverage)) config
     R.runReaderT (runBot tradeLoop) botState
