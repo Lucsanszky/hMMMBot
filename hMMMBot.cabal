@@ -96,7 +96,7 @@ library
                        OverloadedStrings
                        RecordWildCards
 
-executable hMMMBot
+executable hmmmbot-exe
   -- .hs or .lhs file containing the Main module.
   main-is:             Main.hs
 
@@ -124,6 +124,7 @@ executable hMMMBot
                      , haskell-bitmex-rest
                      , haskell-bitmex-client
                      , hMMMBot
+                     , bloodhound >= 0.15 && < 0.16
                      , basic-prelude
                      , bytestring >= 0.10
                      , async
@@ -131,8 +132,12 @@ executable hMMMBot
                      , http-client >=0.5 && <0.6
                      , http-types >= 0.10
                      , aeson >= 1.2
+                     , katip-elasticsearch >= 0.4 && < 0.5
+                     , network >=2.6.2 && <2.7
+                     , katip >=0.4 && < 0.6
                      , http-client-tls >= 0.3
                      , mtl >= 2.2
+                     , microlens >= 0.4
                      , wuss >= 1.1
                      , time
                      , text
@@ -154,7 +159,7 @@ executable hMMMBot
 benchmark bench-bot
   type: exitcode-stdio-1.0
   hs-source-dirs:      benchmarks
-  main-is:             Benchmark.hs
+  main-is:             TraderBenchmark.hs
   build-depends:       base >=4.10 && <4.11
                      , haskell-bitmex-rest
                      , haskell-bitmex-client
@@ -172,6 +177,8 @@ benchmark bench-bot
                      , time
                      , text
                      , vector >= 0.12
+                     , wuss >= 1.1
+                     , network >=2.6.2 && <2.7
                      , stm
 
   default-extensions:  NoImplicitPrelude
