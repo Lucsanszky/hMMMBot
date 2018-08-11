@@ -21,7 +21,7 @@ import           BitMEXClient
     , Symbol (..)
     , Topic (..)
     , connect
-    , connectAndSubscribe
+    , withConnectAndSubscribe
     , getMessage
     , makeRequest
     , makeTimestamp
@@ -93,11 +93,11 @@ tradeLoop = do
         slw <-
             async $
             forever $ stopLossWatcher botState config
-        pnl <- async $ forever $ pnlTracker botState config
+        --pnl <- async $ forever $ pnlTracker botState config
         loss <-
             async $
             forever $ lossLimitUpdater botState config
-        mapM_ A.link [risk, slw, pnl, loss]
+        mapM_ A.link [risk, slw, loss]
     loop
   where
     loop = loop
@@ -165,7 +165,7 @@ initBot leverage = do
     ob10 <-
         liftIO $
         async $
-        connectAndSubscribe config [OrderBook10 XBTUSD] >>= \c ->
+        withConnectAndSubscribe config [OrderBook10 XBTUSD] $ \c ->
             forever $ do
                 msg <- getMessage c config
                 processResponse msg botState config

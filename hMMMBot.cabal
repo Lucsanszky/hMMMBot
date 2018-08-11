@@ -111,7 +111,7 @@ executable hmmmbot-exe
                -O2
                -threaded
                -rtsopts
-               -with-rtsopts=-N
+               -with-rtsopts=-N4
                -funbox-strict-fields
                -fwarn-unused-imports
                -Wcompat
@@ -180,6 +180,18 @@ benchmark bench-bot
                      , wuss >= 1.1
                      , network >=2.6.2 && <2.7
                      , stm
+
+  ghc-options: -Wall
+               -O2
+               -threaded
+               -rtsopts
+               -with-rtsopts=-N4
+               -funbox-strict-fields
+               -fwarn-unused-imports
+               -Wcompat
+               -Wincomplete-record-updates
+               -Wincomplete-uni-patterns
+               -Wredundant-constraints
 
   default-extensions:  NoImplicitPrelude
                        OverloadedStrings

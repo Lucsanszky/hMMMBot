@@ -30,6 +30,7 @@ import           BitMEXClient
 import           Bot.Concurrent
     ( processResponse
     )
+import Bot.Logging
 import           Bot.OrderTemplates
 import           Bot.RiskManager
     ( lossLimitUpdater
@@ -86,12 +87,13 @@ import qualified Data.Text.IO                   as T
 import           Data.Time.Clock.POSIX
     ( getPOSIXTime
     )
+import Data.Time.Clock (getCurrentTime)
 import           Network.HTTP.Client
 import           Network.HTTP.Client.TLS
 import           Network.Socket
     ( withSocketsDo
     )
-import           Network.WebSockets             (Connection)
+import           Network.WebSockets             (Connection, receiveData)
 import           System.Environment
     ( getArgs
     , withArgs
@@ -207,10 +209,12 @@ initBot lev = do
             withArgs [] $
             defaultMainWith
                 (defaultConfig
-                 {resamples = 1000, timeLimit = 30})
+                 {resamples = 1000, timeLimit = 180})
                 [ bench "getMessage with OB10" $
                   nfIO $ do
-                      msg <- getMessage c config
+                      msg <- receiveData c
+                      getCurrentTime >>= print
+                      print (msg :: T.Text)
                       return ()
                 ]
     liftIO $
@@ -260,15 +264,18 @@ initBot lev = do
 main :: IO ()
 main = do
     mgr <- newManager tlsManagerSettings
-    (pubPath:privPath:rest) <- getArgs
+    (pubPath:privPath:esUserPath:esPasswordPath:rest) <- getArgs
     pub <- T.readFile pubPath
     priv <- readFile privPath
+    user <- T.readFile esUserPath
+    pw <- T.readFile esPasswordPath
+    --logCxt <- initEsLogContext >>= esLoggingContext user pw
     logCxt <- Mex.initLogContext
     let config =
             BitMEXWrapperConfig
             { environment = MainNet
             , pathREST = Just "/api/v1"
-            , pathWS = Just "/realtime"
+            , pathWS = Just "/realtimemd"
             , manager = Just mgr
             , publicKey = pub
             , privateKey = priv
