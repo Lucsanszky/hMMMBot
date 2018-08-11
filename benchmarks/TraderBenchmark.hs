@@ -26,11 +26,12 @@ import           BitMEXClient
     , sendMessage
     , sign
     , withConnectAndSubscribe
+    , withConnectAndSubscribeMD
     )
 import           Bot.Concurrent
     ( processResponse
     )
-import Bot.Logging
+import           Bot.Logging
 import           Bot.OrderTemplates
 import           Bot.RiskManager
     ( lossLimitUpdater
@@ -84,16 +85,21 @@ import           Data.IORef                     (newIORef)
 import           Data.Monoid
 import qualified Data.Text                      as T
 import qualified Data.Text.IO                   as T
+import           Data.Time.Clock
+    ( getCurrentTime
+    )
 import           Data.Time.Clock.POSIX
     ( getPOSIXTime
     )
-import Data.Time.Clock (getCurrentTime)
 import           Network.HTTP.Client
 import           Network.HTTP.Client.TLS
 import           Network.Socket
     ( withSocketsDo
     )
-import           Network.WebSockets             (Connection, receiveData)
+import           Network.WebSockets
+    ( Connection
+    , receiveData
+    )
 import           System.Environment
     ( getArgs
     , withArgs
@@ -205,7 +211,7 @@ initBot lev = do
     config@BitMEXWrapperConfig {..} <- R.ask
     botState <- initBotState lev
     liftIO $
-        withConnectAndSubscribe config [OrderBook10 XBTUSD] $ \c ->
+        withConnectAndSubscribeMD config [OrderBook10 XBTUSD] $ \c ->
             withArgs [] $
             defaultMainWith
                 (defaultConfig
