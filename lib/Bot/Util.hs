@@ -17,15 +17,17 @@ module Bot.Util
     , cancelOrders
     , bulkAmendOrders
     , unWrapBotWith
+    , initBotState
     ) where
 
-import           BasicPrelude                hiding (id)
-import qualified BitMEX                      as Mex
+import           BasicPrelude                   hiding (id)
+import qualified BitMEX                         as Mex
     ( Accept (..)
     , BitMEXRequest (..)
     , ContentType (..)
     , Error (..)
     , Leverage
+    , Margin (..)
     , MimeJSON (..)
     , MimeResult (..)
     , Order (..)
@@ -46,6 +48,7 @@ import qualified BitMEX                      as Mex
     , setQuery
     , toQuery
     , unLeverage
+    , userGetMargin
     , _setBodyLBS
     )
 import           BitMEXClient
@@ -55,7 +58,7 @@ import           BitMEXClient
     , Symbol (..)
     , makeRequest
     )
-import           Bot.Math                    (convert)
+import           Bot.Math                       (convert)
 import           Bot.OrderTemplates
     ( closePosition
     , limitBuy
@@ -67,34 +70,43 @@ import           Bot.Types
     ( BitMEXBot (..)
     , BotState (..)
     , OrderID (..)
+    , PnLQueue (..)
     , PositionType (..)
+    , PositionType (..)
+    , RiskManagerQueue (..)
     , Rule (..)
+    , StopLossWatcherQueue (..)
     )
-import           Control.Concurrent          (threadDelay)
-import           Control.Concurrent.STM.TVar (writeTVar)
-import qualified Control.Monad.Reader        as R
+import           Control.Concurrent
+    ( threadDelay
+    )
+import           Control.Concurrent.STM.TBQueue (newTBQueue)
+import           Control.Concurrent.STM.TVar    (newTVar)
+import           Control.Concurrent.STM.TVar    (writeTVar)
+import qualified Control.Monad.Reader           as R
     ( ask
     , asks
     , runReaderT
     )
-import           Control.Monad.STM           (atomically)
+import           Control.Monad.STM              (atomically)
 import           Data.Aeson
     ( decode
     , encode
     )
+import           Data.IORef                     (newIORef)
 import           Data.IORef
     ( IORef
     , atomicWriteIORef
     , readIORef
     )
-import           Data.Maybe                  (fromJust)
-import qualified Data.Text                   as T (pack)
-import           Lens.Micro                  ((^.))
+import           Data.Maybe                     (fromJust)
+import qualified Data.Text                      as T (pack)
+import           Lens.Micro                     ((^.))
 import           Network.HTTP.Client
     ( responseBody
     , responseStatus
     )
-import qualified Network.HTTP.Types.Status   as HTTP
+import qualified Network.HTTP.Types.Status      as HTTP
     ( Status (..)
     )
 
@@ -108,6 +120,60 @@ unWrapBotWith ::
     -> IO ()
 unWrapBotWith f botState =
     R.runReaderT (run (R.runReaderT (runBot f) botState))
+
+initBotState :: Mex.Leverage -> BitMEXReader (BotState)
+initBotState lev = do
+    Mex.MimeResult {Mex.mimeResult = res} <-
+        makeRequest $
+        Mex.userGetMargin (Mex.Accept Mex.MimeJSON)
+    let Right Mex.Margin { Mex.marginWalletBalance = Just wb
+                         , Mex.marginAvailableMargin = Just ab
+                         } = res
+    riskManagerQueue <- liftIO $ atomically $ newTBQueue 1
+    slwQueue <- liftIO $ atomically $ newTBQueue 1
+    pnlQueue <- liftIO $ atomically $ newTBQueue 1
+    prevPosition <- liftIO $ atomically $ newTVar None
+    positionSize <- liftIO $ newIORef 0
+    realPnl <- liftIO $ atomically $ newTVar 0
+    prevBalance <- liftIO $ atomically $ newTVar $ floor wb
+    availableBalance <-
+        liftIO $ atomically $ newTVar $ floor ab
+    walletBalance <-
+        liftIO $ atomically $ newTVar $ floor wb
+    openBuys <- liftIO $ newIORef 0
+    openBuyCost <- liftIO $ newIORef 0
+    openSells <- liftIO $ newIORef 0
+    openSellCost <- liftIO $ newIORef 0
+    bestBid <- liftIO $ newIORef 0.0
+    bestAsk <- liftIO $ newIORef 99999999999.0
+    sellID <- liftIO $ newIORef (OrderID Nothing)
+    buyID <- liftIO $ newIORef (OrderID Nothing)
+    stopOrderId <-
+        liftIO $ atomically $ newTVar (OrderID Nothing)
+    _ <- updateLeverage XBTUSD lev
+    return
+        (BotState
+         { riskManagerQueue =
+               RiskManagerQueue riskManagerQueue
+         , slwQueue = StopLossWatcherQueue slwQueue
+         , pnlQueue = PnLQueue pnlQueue
+         , prevPosition = prevPosition
+         , positionSize = positionSize
+         , realPnl = realPnl
+         , prevBalance = prevBalance
+         , availableBalance = availableBalance
+         , walletBalance = walletBalance
+         , bestAsk = bestAsk
+         , bestBid = bestBid
+         , openBuys = openBuys
+         , openBuyCost = openBuyCost
+         , openSells = openSells
+         , openSellCost = openSellCost
+         , buyID = buyID
+         , sellID = sellID
+         , stopOrderId = stopOrderId
+         , leverage = lev
+         })
 
 -------------------------------------------------------------
 -- ORDERS

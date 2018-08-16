@@ -29,7 +29,6 @@ import           Control.Monad.Reader
     , ReaderT
     )
 import           Data.IORef                     (IORef)
-import           Network.WebSockets             (Connection)
 
 newtype StopPx =
     StopPx (Maybe Double)

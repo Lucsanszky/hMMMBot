@@ -1,4 +1,4 @@
-module Bot
+module HMMMBot
     ( initBot
     ) where
 
@@ -14,18 +14,17 @@ import qualified BitMEX                         as Mex
     , userGetMargin
     )
 import           BitMEXClient
-    ( BitMEXApp
-    , BitMEXReader (..)
+    ( BitMEXReader (..)
     , BitMEXWrapperConfig (..)
     , Command (..)
     , Symbol (..)
     , Topic (..)
-    , connect
     , getMessage
     , makeRequest
     , makeTimestamp
     , sendMessage
     , sign
+    , withConnectAndSubscribe
     )
 import           Bot.Concurrent
     ( processResponse
@@ -51,14 +50,12 @@ import           Bot.Util
 import           Control.Concurrent.Async
     ( async
     , waitAnyCatch
-    , waitCatch
     )
 import qualified Control.Concurrent.Async       as A (link)
 import           Control.Concurrent.STM.TBQueue (newTBQueue)
 import           Control.Concurrent.STM.TVar    (newTVar)
 import qualified Control.Monad.Reader           as R
     ( ask
-    , asks
     , lift
     , runReaderT
     )
@@ -92,11 +89,11 @@ tradeLoop = do
         slw <-
             async $
             forever $ stopLossWatcher botState config
-        pnl <- async $ forever $ pnlTracker botState config
+        --pnl <- async $ forever $ pnlTracker botState config
         loss <-
             async $
             forever $ lossLimitUpdater botState config
-        mapM_ A.link [risk, slw, pnl, loss]
+        mapM_ A.link [risk, slw, loss]
     loop
   where
     loop = loop
@@ -164,30 +161,36 @@ initBot leverage = do
     ob10 <-
         liftIO $
         async $
-        withSocketsDo $
-        runSecureClient base 443 (LBC.unpack path) $ \c -> do
-            time <- makeTimestamp <$> getPOSIXTime
-            sig <-
-                R.runReaderT
-                    (run (sign
-                              (pack
-                                   ("GET" ++
-                                    "/realtime" ++ show time))))
-                    config
-            sendMessage
-                c
-                AuthKey
-                [ String publicKey
-                , toJSON time
-                , (toJSON . show) sig
-                ]
-            sendMessage
-                c
-                Subscribe
-                ([OrderBook10 XBTUSD] :: [Topic Symbol])
+        withConnectAndSubscribe config [OrderBook10 XBTUSD] $ \c ->
             forever $ do
                 msg <- getMessage c config
                 processResponse msg botState config
+        -- liftIO $
+        -- async $
+        -- withSocketsDo $
+        -- runSecureClient base 443 (LBC.unpack path) $ \c -> do
+        --     time <- makeTimestamp <$> getPOSIXTime
+        --     sig <-
+        --         R.runReaderT
+        --             (run (sign
+        --                       (pack
+        --                            ("GET" ++
+        --                             "/realtime" ++ show time))))
+        --             config
+        --     sendMessage
+        --         c
+        --         AuthKey
+        --         [ String publicKey
+        --         , toJSON time
+        --         , (toJSON . show) sig
+        --         ]
+        --     sendMessage
+        --         c
+        --         Subscribe
+        --         ([OrderBook10 XBTUSD] :: [Topic Symbol])
+        --     forever $ do
+        --         msg <- getMessage c config
+        --         processResponse msg botState config
     obl2 <-
         liftIO $
         async $
@@ -243,11 +246,14 @@ initBot leverage = do
                 msg <- getMessage c config
                 processResponse msg botState config
     _ <-
-        liftIO $ async $
+        liftIO $
+        async $
         forever $ do
             eres <- waitAnyCatch [ob10, obl2, misc]
             case eres of
                 (_, Right _) -> return ()
-                (_, Left _)-> R.runReaderT
-                    (run (initBot leverage)) config
+                (_, Left _) ->
+                    R.runReaderT
+                        (run (initBot leverage))
+                        config
     R.runReaderT (runBot tradeLoop) botState
