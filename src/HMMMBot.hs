@@ -1,4 +1,4 @@
-module Bot
+module HMMMBot
     ( initBot
     ) where
 
@@ -14,19 +14,17 @@ import qualified BitMEX                         as Mex
     , userGetMargin
     )
 import           BitMEXClient
-    ( BitMEXApp
-    , BitMEXReader (..)
+    ( BitMEXReader (..)
     , BitMEXWrapperConfig (..)
     , Command (..)
     , Symbol (..)
     , Topic (..)
-    , connect
-    , withConnectAndSubscribe
     , getMessage
     , makeRequest
     , makeTimestamp
     , sendMessage
     , sign
+    , withConnectAndSubscribe
     )
 import           Bot.Concurrent
     ( processResponse
@@ -52,14 +50,12 @@ import           Bot.Util
 import           Control.Concurrent.Async
     ( async
     , waitAnyCatch
-    , waitCatch
     )
 import qualified Control.Concurrent.Async       as A (link)
 import           Control.Concurrent.STM.TBQueue (newTBQueue)
 import           Control.Concurrent.STM.TVar    (newTVar)
 import qualified Control.Monad.Reader           as R
     ( ask
-    , asks
     , lift
     , runReaderT
     )

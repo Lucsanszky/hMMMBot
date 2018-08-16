@@ -9,9 +9,7 @@ import           BitMEXClient
     ( BitMEXReader (..)
     , BitMEXWrapperConfig (..)
     , Environment (..)
-    , connect
     )
-import           Bot                     (initBot)
 import           Bot.Logging
     ( esLoggingContext
     , initEsLogContext
@@ -19,6 +17,7 @@ import           Bot.Logging
 import qualified Control.Monad.Reader    as R (runReaderT)
 import qualified Data.ByteString         as B (readFile)
 import           Data.Text               as T (pack)
+import           HMMMBot                 (initBot)
 import           Network.HTTP.Client     (newManager)
 import           Network.HTTP.Client.TLS
     ( tlsManagerSettings

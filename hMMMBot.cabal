@@ -55,8 +55,9 @@ library
                    Bot.RiskManager
                    Bot.OrderTemplates
                    Bot.Logging
+                   Bot
 
-  hs-source-dirs:      src
+  hs-source-dirs:      lib
 
   build-depends:       base >=4.10 && <4.11
                      , haskell-bitmex-rest
@@ -102,7 +103,7 @@ executable hmmmbot-exe
 
   -- Modules included in this executable, other than Main.
 
-  other-modules: Bot
+  other-modules: HMMMBot
 
   -- LANGUAGE extensions used by modules in this package.
   -- other-extensions:
@@ -124,7 +125,6 @@ executable hmmmbot-exe
                      , haskell-bitmex-rest
                      , haskell-bitmex-client
                      , hMMMBot
-                     , bloodhound >= 0.15 && < 0.16
                      , basic-prelude
                      , bytestring >= 0.10
                      , async
@@ -132,9 +132,7 @@ executable hmmmbot-exe
                      , http-client >=0.5 && <0.6
                      , http-types >= 0.10
                      , aeson >= 1.2
-                     , katip-elasticsearch >= 0.4 && < 0.5
                      , network >=2.6.2 && <2.7
-                     , katip >=0.4 && < 0.6
                      , http-client-tls >= 0.3
                      , mtl >= 2.2
                      , microlens >= 0.4
