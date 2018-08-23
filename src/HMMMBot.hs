@@ -171,8 +171,8 @@ initBot leverage = do
         forever $ do
             eres <- waitCatch subscriptions
             case eres of
-                (_, Right _) -> return ()
-                (_, Left _) ->
+                Right _ -> return ()
+                Left _ ->
                     R.runReaderT
                         (run (initBot leverage))
                         config
