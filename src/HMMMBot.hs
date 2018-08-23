@@ -161,7 +161,7 @@ initBot leverage = do
     subscriptions <-
         liftIO $
         async $
-        withConnectAndSubscribe config [OrderBook10 XBTUSD, Execution, Position, Margin] $ \c ->
+        withConnectAndSubscribe config [OrderBook10 XBTUSD, OrderBookL2 XBTUSD, Execution, Position, Margin] $ \c ->
             forever $ do
                 msg <- getMessage c config
                 processResponse msg botState config
