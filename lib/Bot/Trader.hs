@@ -209,7 +209,7 @@ trader vectorOB10 botState@BotState {..} config = do
                                      "Sell"
                                      limit
                                      orderSize
-                                     (newBestBid + 0.5)
+                                     newBestBid
                                      newBestBid)
                                 botState
                                 config
@@ -223,7 +223,7 @@ trader vectorOB10 botState@BotState {..} config = do
                                      limit
                                      orderSize
                                      newBestAsk
-                                     (newBestAsk - 0.5))
+                                     newBestAsk)
                                 botState
                                 config
             else unWrapBotWith
@@ -237,7 +237,7 @@ trader vectorOB10 botState@BotState {..} config = do
                 (amendLimitOrder
                      buyID'
                      buyID
-                     (Just (newBestAsk - 0.5)) 5)
+                     (Just newBestAsk) 5)
                 botState
                 config
         when
@@ -247,6 +247,6 @@ trader vectorOB10 botState@BotState {..} config = do
                 (amendLimitOrder
                      sellID'
                      sellID
-                     (Just (newBestBid + 0.5)) 5)
+                     (Just newBestBid) 5)
                 botState
                 config
