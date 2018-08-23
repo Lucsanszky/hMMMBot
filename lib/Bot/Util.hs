@@ -227,9 +227,11 @@ placeBulkOrder ::
     -> Integer
     -> Double
     -> Double
+    -> Int
     -> BitMEXBot ()
-placeBulkOrder [] _ _ _ = return ()
-placeBulkOrder orders orderSize ask bid = do
+placeBulkOrder [] _ _ _ _ = return ()
+placeBulkOrder _ _ _ _ 0 = return ()
+placeBulkOrder orders orderSize ask bid retries = do
     obs <- R.asks openBuys
     obc <- R.asks openBuyCost
     oss <- R.asks openSells
@@ -270,37 +272,62 @@ placeBulkOrder orders orderSize ask bid = do
                              ( o ^. Mex.orderOrderIdL
                              , o ^. Mex.orderSideL))
                         resOrders
-            liftIO $ updateIDs ids ids'
-            liftIO $ atomicWriteIORef obs $ buys' +
-                incrementQty orderSize (Just "Buy") pairs
-            liftIO $ atomicWriteIORef obc $ openBC -
-                incrementQty
-                    (floor $
-                     convert
-                         XBT_to_XBt
-                         (fromIntegral orderSize / bid))
-                    (Just "Buy")
-                    pairs
-            liftIO $ atomicWriteIORef oss $ sells' +
-                incrementQty orderSize (Just "Sell") pairs
-            liftIO $ atomicWriteIORef osc $ openSC -
-                incrementQty
-                    (floor $
-                     convert
-                         XBT_to_XBt
-                         (fromIntegral orderSize / ask))
-                    (Just "Sell")
-                    pairs
+            case pairs of
+                [(Just "Cancelled", _)] -> do
+                    liftIO $ threadDelay 50000
+                    placeBulkOrder
+                        orders
+                        orderSize
+                        ask
+                        bid
+                        (retries - 1)
+                _ -> do
+                    liftIO $ updateIDs ids ids'
+                    liftIO $ atomicWriteIORef obs $ buys' +
+                        incrementQty
+                            orderSize
+                            (Just "Buy")
+                            pairs
+                    liftIO $ atomicWriteIORef obc $ openBC -
+                        incrementQty
+                            (floor $
+                             convert
+                                 XBT_to_XBt
+                                 (fromIntegral orderSize /
+                                  bid))
+                            (Just "Buy")
+                            pairs
+                    liftIO $ atomicWriteIORef oss $ sells' +
+                        incrementQty
+                            orderSize
+                            (Just "Sell")
+                            pairs
+                    liftIO $ atomicWriteIORef osc $ openSC -
+                        incrementQty
+                            (floor $
+                             convert
+                                 XBT_to_XBt
+                                 (fromIntegral orderSize /
+                                  ask))
+                            (Just "Sell")
+                            pairs
         else if code == 503 || code == 502
                  then do
-                     liftIO $ threadDelay 250000
-                     placeBulkOrder orders orderSize ask bid
+                     liftIO $ threadDelay 500000
+                     placeBulkOrder
+                         orders
+                         orderSize
+                         ask
+                         bid
+                         (retries - 1)
                  else if code == 429
                           then do
                               liftIO $ threadDelay 1000000
                               return ()
                           else kill
-                                   ("order didn't go through " <> show code <> show resp)
+                                   ("order didn't go through " <>
+                                    show code <>
+                                    show resp)
 
 amendOrder ::
        Mex.Order -> BitMEXBot (Mex.MimeResult Mex.Order)
@@ -317,16 +344,30 @@ amendLimitOrder ::
        OrderID
     -> IORef OrderID
     -> Maybe Double
+    -> Int
     -> BitMEXBot ()
-amendLimitOrder cid@(OrderID (Just _)) idRef price = do
+amendLimitOrder _ _ _ 0 = return ()
+amendLimitOrder cid@(OrderID (Just _)) idRef price retries = do
     let newStopLoss =
             (orderWithId cid) {Mex.orderPrice = price}
-    Mex.MimeResult {Mex.mimeResultResponse = resp} <-
-        amendOrder newStopLoss
+    Mex.MimeResult { Mex.mimeResultResponse = resp
+                   , Mex.mimeResult = res
+                   } <- amendOrder newStopLoss
     let HTTP.Status {statusCode = code} =
             responseStatus resp
     if code == 200
-        then return ()
+        then do
+            let Right resOrder = res
+            if (resOrder ^. Mex.orderOrdStatusL ==
+                Just "Cancelled")
+                then do
+                    liftIO $ threadDelay 50000
+                    amendLimitOrder
+                        cid
+                        idRef
+                        price
+                        (retries - 1)
+                else return ()
         else if code == 400
                  then do
                      let err =
@@ -349,7 +390,7 @@ amendLimitOrder cid@(OrderID (Just _)) idRef price = do
                                   "amending limit order failed"
                  else if code == 503 || code == 502
                           then do
-                              liftIO $ threadDelay 250000
+                              liftIO $ threadDelay 500000
                               return ()
                           else if code == 429
                                    then do
@@ -359,7 +400,7 @@ amendLimitOrder cid@(OrderID (Just _)) idRef price = do
                                        return ()
                                    else kill
                                             "amending limit order failed"
-amendLimitOrder (OrderID Nothing) _ _ = return ()
+amendLimitOrder (OrderID Nothing) _ _ _ = return ()
 
 bulkAmendOrders ::
        [Mex.Order] -> BitMEXBot (Mex.MimeResult [Mex.Order])
@@ -606,4 +647,4 @@ makeMarket action limit orderSize ask bid = do
                           ask
                     ]
                 | otherwise = []
-        placeBulkOrder orders oSize ask bid
+        placeBulkOrder orders oSize ask bid 5

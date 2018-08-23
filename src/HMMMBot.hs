@@ -49,7 +49,7 @@ import           Bot.Util
     )
 import           Control.Concurrent.Async
     ( async
-    , waitAnyCatch
+    , waitCatch
     )
 import qualified Control.Concurrent.Async       as A (link)
 import           Control.Concurrent.STM.TBQueue (newTBQueue)
@@ -158,90 +158,10 @@ initBot leverage = do
                 Nothing -> "/realtime"
                 Just x  -> x
     _ <- updateLeverage XBTUSD leverage
-    ob10 <-
+    subscriptions <-
         liftIO $
         async $
-        withConnectAndSubscribe config [OrderBook10 XBTUSD] $ \c ->
-            forever $ do
-                msg <- getMessage c config
-                processResponse msg botState config
-        -- liftIO $
-        -- async $
-        -- withSocketsDo $
-        -- runSecureClient base 443 (LBC.unpack path) $ \c -> do
-        --     time <- makeTimestamp <$> getPOSIXTime
-        --     sig <-
-        --         R.runReaderT
-        --             (run (sign
-        --                       (pack
-        --                            ("GET" ++
-        --                             "/realtime" ++ show time))))
-        --             config
-        --     sendMessage
-        --         c
-        --         AuthKey
-        --         [ String publicKey
-        --         , toJSON time
-        --         , (toJSON . show) sig
-        --         ]
-        --     sendMessage
-        --         c
-        --         Subscribe
-        --         ([OrderBook10 XBTUSD] :: [Topic Symbol])
-        --     forever $ do
-        --         msg <- getMessage c config
-        --         processResponse msg botState config
-    obl2 <-
-        liftIO $
-        async $
-        withSocketsDo $
-        runSecureClient base 443 (LBC.unpack path) $ \c -> do
-            time <- makeTimestamp <$> getPOSIXTime
-            sig <-
-                R.runReaderT
-                    (run (sign
-                              (pack
-                                   ("GET" ++
-                                    "/realtime" ++ show time))))
-                    config
-            sendMessage
-                c
-                AuthKey
-                [ String publicKey
-                , toJSON time
-                , (toJSON . show) sig
-                ]
-            sendMessage
-                c
-                Subscribe
-                ([OrderBookL2 XBTUSD] :: [Topic Symbol])
-            forever $ do
-                msg <- getMessage c config
-                processResponse msg botState config
-    misc <-
-        liftIO $
-        async $
-        withSocketsDo $
-        runSecureClient base 443 (LBC.unpack path) $ \c -> do
-            time <- makeTimestamp <$> getPOSIXTime
-            sig <-
-                R.runReaderT
-                    (run (sign
-                              (pack
-                                   ("GET" ++
-                                    "/realtime" ++ show time))))
-                    config
-            sendMessage
-                c
-                AuthKey
-                [ String publicKey
-                , toJSON time
-                , (toJSON . show) sig
-                ]
-            sendMessage
-                c
-                Subscribe
-                ([Execution, Position, Margin] :: [Topic Symbol])
+        withConnectAndSubscribe config [OrderBook10 XBTUSD, Execution, Position, Margin] $ \c ->
             forever $ do
                 msg <- getMessage c config
                 processResponse msg botState config
@@ -249,7 +169,7 @@ initBot leverage = do
         liftIO $
         async $
         forever $ do
-            eres <- waitAnyCatch [ob10, obl2, misc]
+            eres <- waitCatch subscriptions
             case eres of
                 (_, Right _) -> return ()
                 (_, Left _) ->

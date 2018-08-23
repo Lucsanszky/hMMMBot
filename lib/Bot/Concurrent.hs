@@ -50,15 +50,26 @@ processResponse ::
     -> BitMEXWrapperConfig
     -> IO ()
 processResponse Nothing _ _ = return ()
-processResponse (Just (OB TABLE { _action = Delete
-                                , _data = orderBookData
-                                })) botState config =
+-- processResponse (Just (OB TABLE { _action = Delete
+--                                 , _data = orderBookData
+--                                 })) botState config =
+--     trader orderBookData botState config
+processResponse (Just (OB10 TABLE {_data = orderBookData})) botState config = do
+    let RespOrderBook10 {asks = newAsks, bids = newBids} = V.head orderBookData
     trader orderBookData botState config
-processResponse (Just (OB10 TABLE {_data = orderBookData})) BotState {..} _ = do
-    let RespOrderBook10 {asks = newAsks, bids = newBids} =
-            V.head orderBookData
-    atomicWriteIORef bestAsk $ V.head $ V.head newAsks
-    atomicWriteIORef bestBid $ V.head $ V.head newBids
+    --         V.head orderBookData
+    --     newBestAsk = V.head $ V.head newAsks
+    --     newBestBid = V.head $ V.head newBids
+    --     bestAskVol = V.last $ V.head newAsks
+    --     bestBidVol = V.last $ V.head newBids
+    -- if (bestAskVol <= 5000 || bestBidVol <= 5000)
+    --    then do
+    --       trader orderBookData botState config
+    --       atomicWriteIORef bestAsk newBestAsk
+    --       atomicWriteIORef bestBid newBestBid
+    --    else do
+    --       atomicWriteIORef bestAsk newBestAsk
+    --       atomicWriteIORef bestBid newBestBid
 processResponse (Just posResp@(P TABLE {_data = positionData})) BotState {..} _ = do
     let RespPosition { currentQty = currQty
                      , openOrderBuyQty = buyQty

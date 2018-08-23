@@ -122,7 +122,7 @@ riskManager botState@BotState {..} config = do
                                  o
                                  ((abs . truncate) q)
                                  ask
-                                 bid)
+                                 bid 5)
                             botState
                             config
                     when (sellQty == 0 && q > 0) $ do
@@ -134,7 +134,7 @@ riskManager botState@BotState {..} config = do
                                  o
                                  (truncate q)
                                  ask
-                                 bid)
+                                 bid 5)
                             botState
                             config
             case qty >> currQty of
