@@ -274,7 +274,7 @@ placeBulkOrder orders orderSize ask bid retries = do
                         resOrders
             case pairs of
                 [(Just "Cancelled", _)] -> do
-                    liftIO $ threadDelay 50000
+                    liftIO $ threadDelay 20000
                     placeBulkOrder
                         orders
                         orderSize
@@ -361,7 +361,7 @@ amendLimitOrder cid@(OrderID (Just _)) idRef price retries = do
             if (resOrder ^. Mex.orderOrdStatusL ==
                 Just "Cancelled")
                 then do
-                    liftIO $ threadDelay 50000
+                    liftIO $ threadDelay 20000
                     amendLimitOrder
                         cid
                         idRef
