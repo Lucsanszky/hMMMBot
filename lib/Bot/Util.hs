@@ -80,6 +80,10 @@ import           Bot.Types
 import           Control.Concurrent
     ( threadDelay
     )
+import qualified Control.Concurrent.Async       as A
+    ( async
+    , link
+    )
 import           Control.Concurrent.STM.TBQueue (newTBQueue)
 import           Control.Concurrent.STM.TVar    (newTVar)
 import           Control.Concurrent.STM.TVar    (writeTVar)
@@ -232,6 +236,8 @@ placeBulkOrder ::
 placeBulkOrder [] _ _ _ _ = return ()
 placeBulkOrder _ _ _ _ 0 = return ()
 placeBulkOrder orders orderSize ask bid retries = do
+    botState <- R.ask
+    config <- BitMEXBot $ lift $ R.ask
     obs <- R.asks openBuys
     obc <- R.asks openBuyCost
     oss <- R.asks openSells
@@ -251,83 +257,86 @@ placeBulkOrder orders orderSize ask bid retries = do
             encode orders <>
             "}"
         ids = (sellID', buyID')
-    Mex.MimeResult { Mex.mimeResultResponse = resp
-                   , Mex.mimeResult = res
-                   } <-
-        BitMEXBot . lift $ makeRequest orderRequest
-    let HTTP.Status {statusCode = code} =
-            responseStatus resp
-    if code == 200
-        then do
-            let Right resOrders = res
-                pairs =
-                    map
-                        (\o ->
-                             ( o ^. Mex.orderOrdStatusL
-                             , o ^. Mex.orderSideL))
-                        resOrders
-                ids' =
-                    map
-                        (\o ->
-                             ( o ^. Mex.orderOrderIdL
-                             , o ^. Mex.orderSideL))
-                        resOrders
-            case pairs of
-                [(Just "Cancelled", _)] -> do
-                    liftIO $ threadDelay 20000
-                    placeBulkOrder
-                        orders
-                        orderSize
-                        ask
-                        bid
-                        (retries - 1)
-                _ -> do
-                    liftIO $ updateIDs ids ids'
-                    liftIO $ atomicWriteIORef obs $ buys' +
-                        incrementQty
-                            orderSize
-                            (Just "Buy")
-                            pairs
-                    liftIO $ atomicWriteIORef obc $ openBC -
-                        incrementQty
-                            (floor $
-                             convert
-                                 XBT_to_XBt
-                                 (fromIntegral orderSize /
-                                  bid))
-                            (Just "Buy")
-                            pairs
-                    liftIO $ atomicWriteIORef oss $ sells' +
-                        incrementQty
-                            orderSize
-                            (Just "Sell")
-                            pairs
-                    liftIO $ atomicWriteIORef osc $ openSC -
-                        incrementQty
-                            (floor $
-                             convert
-                                 XBT_to_XBt
-                                 (fromIntegral orderSize /
-                                  ask))
-                            (Just "Sell")
-                            pairs
-        else if code == 503 || code == 502
-                 then do
-                     liftIO $ threadDelay 500000
-                     placeBulkOrder
-                         orders
-                         orderSize
-                         ask
-                         bid
-                         (retries - 1)
-                 else if code == 429
-                          then do
-                              liftIO $ threadDelay 1000000
-                              return ()
-                          else kill
-                                   ("order didn't go through " <>
-                                    show code <>
-                                    show resp)
+    liftIO $ replicateM_ 5 $ do
+        t <- liftIO $ A.async $ unWrapBotWith ( do
+                    Mex.MimeResult { Mex.mimeResultResponse = resp
+                                   , Mex.mimeResult = res
+                                   } <- BitMEXBot . lift $ makeRequest orderRequest
+                    let HTTP.Status {statusCode = code} =
+                            responseStatus resp
+                    if code == 200
+                        then do
+                            let Right resOrders = res
+                                pairs =
+                                    map
+                                        (\o ->
+                                            ( o ^. Mex.orderOrdStatusL
+                                            , o ^. Mex.orderSideL))
+                                        resOrders
+                                ids' =
+                                    map
+                                        (\o ->
+                                            ( o ^. Mex.orderOrderIdL
+                                            , o ^. Mex.orderSideL))
+                                        resOrders
+                            case pairs of
+                                [(Just "Cancelled", _)] -> do
+                                    liftIO $ threadDelay 20000
+                                    placeBulkOrder
+                                        orders
+                                        orderSize
+                                        ask
+                                        bid
+                                        (retries - 1)
+                                _ -> do
+                                    liftIO $ updateIDs ids ids'
+                                    liftIO $ atomicWriteIORef obs $ buys' +
+                                        incrementQty
+                                            orderSize
+                                            (Just "Buy")
+                                            pairs
+                                    liftIO $ atomicWriteIORef obc $ openBC -
+                                        incrementQty
+                                            (floor $
+                                            convert
+                                                XBT_to_XBt
+                                                (fromIntegral orderSize /
+                                                  bid))
+                                            (Just "Buy")
+                                            pairs
+                                    liftIO $ atomicWriteIORef oss $ sells' +
+                                        incrementQty
+                                            orderSize
+                                            (Just "Sell")
+                                            pairs
+                                    liftIO $ atomicWriteIORef osc $ openSC -
+                                        incrementQty
+                                            (floor $
+                                            convert
+                                                XBT_to_XBt
+                                                (fromIntegral orderSize /
+                                                  ask))
+                                            (Just "Sell")
+                                            pairs
+                        else if code == 503 || code == 502
+                                then do
+                                    liftIO $ threadDelay 500000
+                                    placeBulkOrder
+                                        orders
+                                        orderSize
+                                        ask
+                                        bid
+                                        (retries - 1)
+                                else if code == 429
+                                          then do
+                                              liftIO $ threadDelay 1000000
+                                              return ()
+                                          else kill
+                                                  ("order didn't go through " <>
+                                                    show code <>
+                                                    show resp)) botState config
+        A.link t
+        threadDelay 20000
 
 amendOrder ::
        Mex.Order -> BitMEXBot (Mex.MimeResult Mex.Order)
