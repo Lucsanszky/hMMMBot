@@ -120,25 +120,25 @@ trader vectorOB10 botState@BotState {..} config = do
                      (kill "not enough funds")
                      botState
                      config
-        when
-            (sellQty == 0 &&
-             buyQty /= 0 && bestAskVol <= 5000) $ do
-            unWrapBotWith
-                (amendLimitOrder
-                     buyID'
-                     buyID
-                     (Just newBestAsk)
-                     5)
-                botState
-                config
-        when
-            (buyQty == 0 &&
-             sellQty /= 0 && bestBidVol <= 5000) $ do
-            unWrapBotWith
-                (amendLimitOrder
-                     sellID'
-                     sellID
-                     (Just newBestBid)
-                     5)
-                botState
-                config
+        -- when
+        --     (sellQty == 0 &&
+        --      buyQty /= 0 && bestAskVol <= 5000) $ do
+        --     unWrapBotWith
+        --         (amendLimitOrder
+        --              buyID'
+        --              buyID
+        --              (Just newBestAsk)
+        --              5)
+        --         botState
+        --         config
+        -- when
+        --     (buyQty == 0 &&
+        --      sellQty /= 0 && bestBidVol <= 5000) $ do
+        --     unWrapBotWith
+        --         (amendLimitOrder
+        --              sellID'
+        --              sellID
+        --              (Just newBestBid)
+        --              5)
+        --         botState
+        --         config

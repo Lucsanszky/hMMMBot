@@ -598,12 +598,12 @@ updateLeverage sym lev = do
 getLimit :: Double -> Double -> Integer
 getLimit price balance =
     floor $ convert XBT_to_USD price *
-    convert XBt_to_XBT (balance * 0.2)
+    convert XBt_to_XBT (balance * 0.1)
 
 getOrderSize :: Double -> Double -> Integer
 getOrderSize price balance =
     floor $ convert XBT_to_USD price *
-    convert XBt_to_XBT (balance * 0.21)
+    convert XBt_to_XBT (balance * 0.31)
 
 incrementQty ::
        Integer
@@ -656,4 +656,4 @@ makeMarket action limit orderSize ask bid = do
                           ask
                     ]
                 | otherwise = []
-        placeBulkOrder orders oSize ask bid 5
+        placeBulkOrder orders oSize ask bid 4
